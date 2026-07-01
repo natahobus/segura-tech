@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SeguraTech — Acesso ao Sistema</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="login-page">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="login-logo">ST</div>
+      <div>
+        <div class="login-brand-title">SeguraTech</div>
+        <div class="login-brand-subtitle">Acesso interno ao sistema</div>
+      </div>
+    </div>
+
+    <form id="loginForm" class="login-form">
+      <div class="field">
+        <label for="username">Usuário</label>
+        <input id="username" type="text" placeholder="vendedor" autocomplete="username" required>
+      </div>
+
+      <div class="field">
+        <label for="password">Senha</label>
+        <input id="password" type="password" placeholder="Senha" autocomplete="current-password" required>
+      </div>
+
+      <div id="loginError" class="login-error" aria-live="polite"></div>
+      <button type="submit" class="btn primary login-submit">Entrar</button>
+    </form>
+
+  </div>
+
+  <script src="login.js"></script>
+</body>
+</html>

@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SeguraTech — App</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-logo">
+      <div class="topbar-logo-icon">ST</div>
+      <div>
+        <div>SeguraTech</div>
+        <small>Gestão de Seguros</small>
+      </div>
+    </div>
+
+    <nav class="topbar-nav">
+      <button class="topbar-nav-btn active" data-roles="vendedor,emissao,sinistro,gestor" onclick="showScreen('dashboard', this)">Dashboard</button>
+      <button class="topbar-nav-btn" data-roles="vendedor,gestor" onclick="showScreen('indicacoes', this)">Indicações</button>
+      <button class="topbar-nav-btn" data-roles="vendedor,gestor" onclick="showScreen('renovacao', this)">Renovação</button>
+      <button class="topbar-nav-btn" data-roles="vendedor,gestor" onclick="showScreen('seguros', this)">Seguros</button>
+      <button class="topbar-nav-btn" data-roles="vendedor,gestor" onclick="showScreen('apolice', this)">Apólices</button>
+      <button class="topbar-nav-btn" data-roles="emissao,gestor" onclick="showScreen('emissao', this)">Emissão</button>
+      <button class="topbar-nav-btn" data-roles="sinistro,gestor" onclick="showScreen('sinistros', this)">Sinistros</button>
+    </nav>
+
+    <div class="topbar-right">
+      <button class="btn secondary theme-toggle" type="button" onclick="toggleTheme()" title="Alternar tema">🌙</button>
+      <div class="topbar-user">
+        <div class="avatar">ST</div>
+        <span id="userLabel">Carregando...</span>
+      </div>
+      <button class="btn secondary" type="button" onclick="logout()">Sair</button>
+    </div>
+  </div>
+
+  <div class="app-body">
+    <aside class="sidebar">
+      <div class="sidebar-section">Navegação</div>
+      <div class="sidebar-item active" data-roles="vendedor,emissao,sinistro,gestor" onclick="showScreen('dashboard', null, this)">
+        <span>Dashboard</span>
+      </div>
+      <div class="sidebar-item" data-roles="vendedor,gestor" onclick="showScreen('indicacoes', null, this)">
+        <span>Indicações</span>
+      </div>
+      <div class="sidebar-item" data-roles="vendedor,gestor" onclick="showScreen('renovacao', null, this)">
+        <span>Renovação</span>
+      </div>
+      <div class="sidebar-item" data-roles="vendedor,gestor" onclick="showScreen('seguros', null, this)">
+        <span>Seguros</span>
+      </div>
+      <div class="sidebar-item" data-roles="vendedor,gestor" onclick="showScreen('apolice', null, this)">
+        <span>Apólices</span>
+      </div>
+      <div class="sidebar-item" data-roles="emissao,gestor" onclick="showScreen('emissao', null, this)">
+        <span>Emissão</span>
+      </div>
+      <div class="sidebar-item" data-roles="sinistro,gestor" onclick="showScreen('sinistros', null, this)">
+        <span>Sinistros</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="screen active" id="screen-dashboard">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title" id="dashboardTitle">Dashboard</h1>
+            <p class="page-subtitle" id="dashboardSubtitle">Visão geral rápida do sistema</p>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label" id="dashboardMetric1Label">Apólices ativas</div>
+            <div class="stat-value" id="dashboardPolicies">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label" id="dashboardMetric2Label">Renovações pendentes</div>
+            <div class="stat-value" id="dashboardRenewal">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label" id="dashboardMetric3Label">Leads disponíveis</div>
+            <div class="stat-value" id="dashboardLeads">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label" id="dashboardMetric4Label">Propostas na fila</div>
+            <div class="stat-value" id="dashboardProposals">0</div>
+          </div>
+        </div>
+
+        <div class="grid2" id="dashboardDetailsGrid">
+          <div class="card">
+            <div class="card-header"><div class="card-title" id="dashboardLeftTitle">Atividades em andamento</div></div>
+            <div class="card-body" id="dashboardLeftBody">
+              <div class="bar-row"><span class="bar-label">Propostas aprovadas</span><div class="bar-track"><div class="bar-fill" style="width:72%"></div></div><span class="bar-val">72%</span></div>
+              <div class="bar-row"><span class="bar-label">Leads convertidos</span><div class="bar-track"><div class="bar-fill" style="width:49%"></div></div><span class="bar-val">49%</span></div>
+              <div class="bar-row"><span class="bar-label">Sinistros em análise</span><div class="bar-track"><div class="bar-fill" style="width:30%"></div></div><span class="bar-val">30%</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title" id="dashboardRightTitle">Resumo rápido</div></div>
+            <div class="card-body status-mini" id="dashboardRightBody">
+              <div class="status-mini-card"><div class="status-mini-label">Emissão</div><div class="status-mini-val" style="color: var(--blue)">9</div></div>
+              <div class="status-mini-card"><div class="status-mini-label">Sinistros</div><div class="status-mini-val" style="color: var(--amber)">5</div></div>
+              <div class="status-mini-card"><div class="status-mini-label">Leads</div><div class="status-mini-val" style="color: var(--green)">3</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-indicacoes">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Indicações</h1>
+            <p class="page-subtitle">Gerencie leads, propostas e indicações.</p>
+          </div>
+        </div>
+
+        <div class="card" id="gestorLeadsCard" style="display:none;margin-bottom:20px;">
+          <div class="card-header"><div class="card-title">Enviar indicação para vendedor</div></div>
+          <div class="card-body">
+            <div class="grid2">
+              <div class="field"><label>Nome *</label><input id="leadClient" placeholder="Nome do cliente"></div>
+              <div class="field"><label>Telefone *</label><input id="leadPhone" placeholder="(53) 99999-0000"></div>
+            </div>
+            <div class="grid2">
+              <div class="field"><label>Vendedor responsável *</label><select id="leadOwner"><option value="vendedor">Carla Vendas</option></select></div>
+              <div class="field"><label>Origem</label><input id="leadSource" placeholder="Indicação do gestor" value="Indicação do gestor"></div>
+            </div>
+            <div class="field"><label>Observação / descrição *</label><textarea id="leadNotes" placeholder="Descreva o interesse do cliente..." rows="3"></textarea></div>
+            <div class="form-footer"><button class="btn primary" onclick="createLead(event)">Enviar indicação</button></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-header"><div class="card-title" id="leadsTableTitle">Indicações recebidas</div></div>
+          <div class="table-wrap">
+            <table id="leadsTable">
+              <thead><tr><th>Nome</th><th>Telefone</th><th>Observação</th><th>Origem</th><th>Status</th><th>Criado por</th><th>Data</th><th id="leadsTableActionsHeader">Ações</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-header"><div class="card-title">Indicações não fechadas</div></div>
+          <div class="table-wrap">
+            <table id="leadsNotClosedTable">
+              <thead><tr><th>Nome</th><th>Telefone</th><th>Observação</th><th>Origem</th><th>Status</th><th>Criado por</th><th>Data</th><th>Ações</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:32px;">
+          <div class="card-header"><div class="card-title">Indicações fechadas</div></div>
+          <div class="table-wrap">
+            <table id="leadsClosedTable">
+              <thead><tr><th>Cliente</th><th>Telefone</th><th>Origem</th><th>Status</th><th>Responsável</th><th>Data</th><th>Notas</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-renovacao">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Renovação</h1>
+            <p class="page-subtitle">Solicitações de renovação e apólices não renovadas.</p>
+          </div>
+        </div>
+
+        <div class="card" id="gestorRenewalCard" style="display:none;margin-bottom:20px;">
+          <div class="card-header"><div class="card-title">Enviar renovação para o vendedor</div></div>
+          <div class="card-body">
+            <div class="grid2">
+              <div class="field"><label>CLIENTE</label><input id="renewalClient" placeholder="Nome do cliente"></div>
+              <div class="field"><label>CPF</label><input id="renewalCpf" placeholder="000.000.000-00"></div>
+            </div>
+            <div class="grid2">
+              <div class="field"><label>SEGURADORA</label><input id="renewalInsurer" placeholder="Seguradora"></div>
+              <div class="field"><label>RAMO</label><select id="renewalType"><option value="">Selecione o ramo</option><option>Automóvel</option><option>Residencial</option><option>Vida</option><option>Empresarial</option><option>Rural</option><option>Outros</option></select></div>
+            </div>
+            <div class="grid2">
+              <div class="field"><label>FINAL DA VIGÊNCIA</label><input type="date" id="renewalEnd" tabindex="0"></div>
+              <div class="field"><label>TELEFONE</label><input id="renewalPhone" placeholder="(53) 99999-0000" tabindex="0"></div>
+            </div>
+            <div class="grid2">
+              <div class="field"><label>PDF DA APÓLICE</label><input type="file" id="renewalPolicyPdf" accept=".pdf,application/pdf" tabindex="0"></div>
+              <div class="field"><label>Vendedor</label><select id="renewalSeller" tabindex="0"><option value="">Selecione um vendedor</option><option value="vendedor">Carla Vendas</option></select></div>
+            </div>
+            <div class="form-footer"><button class="btn primary" onclick="sendRenewalRequest(event)">Enviar renovação ao vendedor</button></div>
+          </div>
+        </div>
+
+        <!-- Formulário de proposta de renovação — só para vendedor -->
+        <div class="card" id="renewalProposalCard" style="display:none;margin-bottom:20px;">
+          <div class="card-header"><div class="card-title" id="renewalProposalCardTitle">Nova proposta de renovação</div></div>
+          <div class="card-body">
+            <div class="grid2">
+              <div class="field"><label>Cliente *</label><input id="renewSaleClient" placeholder="Nome do cliente"></div>
+              <div class="field"><label>CPF *</label><input id="renewSaleCpf" placeholder="000.000.000-00"></div>
+            </div>
+            <div class="grid2">
+              <div class="field"><label>Seguradora *</label><select id="renewSaleInsurer"><option>Porto Seguro</option><option>Bradesco Seguros</option><option>Allianz</option><option>SulAmérica</option><option>HDI Seguros</option></select></div>
+              <div class="field"><label>Tipo de seguro *</label><select id="renewSaleType"><option>Automóvel</option><option>Residencial</option><option>Vida</option><option>Empresarial</option></select></div>
+            </div>
+            <div class="grid2">
+              <div class="field"><label>PDF da proposta</label><input type="file" id="renewSalePdf" accept=".pdf,application/pdf"></div>
+              <div class="field"><label>Vencimento da 1ª parcela</label><input type="date" id="renewSaleFirstDue"></div>
+            </div>
+            <div class="grid2">
+              <div class="field"><label>Início de vigência</label><input type="date" id="renewSaleStart"></div>
+              <div class="field"><label>Fim de vigência</label><input type="date" id="renewSaleEnd"></div>
+            </div>
+            <div class="field"><label>Observações</label><textarea id="renewSaleNotes" placeholder="Notas da proposta de renovação"></textarea></div>
+            <div class="form-footer">
+              <button class="btn secondary" onclick="cancelRenewalProposal()">Cancelar</button>
+              <button class="btn primary" onclick="createRenewalProposal(event)">Enviar para emissão</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title">Renovações recebidas</div></div>
+          <div class="table-wrap">
+            <table id="renovacoesTable">
+              <thead><tr><th>Cliente</th><th>CPF</th><th>Telefone</th><th>Apólice</th><th>Seguradora</th><th>Tipo</th><th>Vencimento</th><th>PDF</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card" style="margin-top:32px;">
+          <div class="card-header"><div class="card-title">Não renovadas</div></div>
+          <div class="table-wrap">
+            <table id="notRenewedTable">
+              <thead><tr><th>Cliente</th><th>CPF</th><th>Apólice</th><th>Seguradora</th><th>Tipo</th><th>Vencimento</th><th>Status</th><th>Motivo</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-seguros">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Seguros</h1>
+            <p class="page-subtitle">Acompanhe os seguros fechados e em aberto.</p>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-header"><div class="card-title">Seguros fechados</div></div>
+          <div class="table-wrap">
+            <table id="closedPoliciesTable">
+              <thead><tr><th>Apólice</th><th>Cliente</th><th>CPF</th><th>Seguradora</th><th>Tipo</th><th>Status</th><th>PDF</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:32px;">
+          <div class="card-header"><div class="card-title">Seguros em aberto</div></div>
+          <div class="table-wrap">
+            <table id="openPoliciesTable">
+              <thead><tr><th>Proposta</th><th>Cliente</th><th>CPF</th><th>Seguradora</th><th>Tipo</th><th>Status</th><th>Observações</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-apolice">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Apólices</h1>
+            <p class="page-subtitle">Busque por nome, CPF ou número da apólice.</p>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:24px;background:linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);border:none;">
+          <div class="card-body" style="padding:28px 32px;">
+            <div style="color:white;font-size:13px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:12px;opacity:0.85;">Buscar apólice</div>
+            <div style="display:flex;gap:12px;align-items:center;">
+              <input id="apoliceSearch" style="flex:1;font-size:15px;padding:14px 20px;border-radius:var(--radius-full);border:none;background:rgba(255,255,255,0.15);color:white;backdrop-filter:blur(10px);outline:none;" placeholder="Nome do cliente, CPF ou número da apólice..." oninput="searchPolicies()" onfocus="this.style.background='rgba(255,255,255,0.25)'" onblur="this.style.background='rgba(255,255,255,0.15)'">
+              <button class="btn" onclick="clearPolicySearch()" style="background:rgba(255,255,255,0.15);color:white;border:1.5px solid rgba(255,255,255,0.3);white-space:nowrap;backdrop-filter:blur(10px);">Limpar</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title">Resultados</div></div>
+          <div class="table-wrap">
+            <table id="policiesTable">
+              <thead><tr><th>Apólice</th><th>Cliente</th><th>CPF</th><th>Seguradora</th><th>Tipo</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-emissao">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Emissão</h1>
+            <p class="page-subtitle">Abra a proposta, emita no portal da seguradora e anexe o PDF da apólice.</p>
+          </div>
+        </div>
+
+        <div class="grid2-3">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Fila de propostas</div></div>
+            <div class="proposta-list" id="proposalList"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">Detalhes selecionados</div></div>
+            <div class="card-body" id="proposalDetails">
+              <p style="color: var(--text-muted);">Selecione uma proposta para ver os detalhes.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-sinistros">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Sinistros</h1>
+            <p class="page-subtitle">Registre ocorrências e acompanhe o histórico completo.</p>
+          </div>
+          <div style="display:flex;gap:12px;">
+            <button class="btn secondary" id="btnAtivos" onclick="loadSinistros(false)" style="background:var(--primary);color:white;">Ativos</button>
+            <button class="btn secondary" id="btnFinalizados" onclick="loadSinistros(true)">Finalizados</button>
+          </div>
+        </div>
+
+        <div class="grid2-3">
+          <div>
+            <div class="card">
+              <div class="card-header"><div class="card-title">Registrar novo sinistro</div></div>
+              <div class="card-body">
+                <div class="field" style="margin-top:20px;">
+                  <label>Tipo de Envolvido *</label>
+                  <select id="claimTipoEnvolvido" onchange="toggleTipoEnvolvido()">
+                    <option value="segurado">Segurado</option>
+                    <option value="terceiro">Terceiro</option>
+                  </select>
+                </div>
+
+                <!-- Dados principais do SEGURADO -->
+                <div id="seguradoMainFields">
+                  <div class="field"><label>Nome do Segurado *</label><input id="claimSeguradoNome" placeholder="Nome completo"></div>
+                  <div class="field"><label>CPF do Segurado *</label><input id="claimSeguradoCpf" placeholder="000.000.000-00"></div>
+                </div>
+
+                <div id="claimSeguradoOnlyFields">
+                  <div class="field"><label>Apólice *</label><input id="claimPolicy" placeholder="0009821-4"></div>
+                  <div class="grid2">
+                    <div class="field"><label>Seguradora *</label><input id="claimInsurer" placeholder="Porto Seguro"></div>
+                    <div class="field"><label>Tipo *</label><input id="claimType" placeholder="Colisão, Roubo..."></div>
+                  </div>
+                  <div class="grid2">
+                    <div class="field"><label>Data do Sinistro</label><input id="claimSinistroDate" type="date"></div>
+                    <div class="field"><label>Data do Aviso</label><input id="claimAvisoDate" type="date"></div>
+                  </div>
+                  <div class="field">
+                    <label>Status Inicial *</label>
+                    <select id="claimStatus">
+                      <option value="Em andamento">Em andamento</option>
+                      <option value="Aguardando vistoria">Aguardando vistoria</option>
+                      <option value="Aguardando documentos">Aguardando documentos</option>
+                      <option value="Em análise">Em análise</option>
+                      <option value="Aguardando peças">Aguardando peças</option>
+                      <option value="Em reparo">Em reparo</option>
+                    </select>
+                  </div>
+                  <div class="field"><label>Descrição</label><textarea id="claimDescription" placeholder="Descreva o sinistro..."></textarea></div>
+                </div>
+                
+                <!-- Campos para SEGURADO -->
+                <div id="seguradoFields">
+                  <h4 style="margin:16px 0 12px;color:var(--text-primary);font-size:14px;font-weight:600;">Dados do Segurado</h4>
+                  <div class="grid2">
+                    <div class="field"><label>Modelo do Veículo *</label><input id="claimSeguradoVeiculoModelo" placeholder="Honda Civic"></div>
+                    <div class="field"><label>Placa *</label><input id="claimSeguradoVeiculoPlaca" placeholder="ABC-1234"></div>
+                  </div>
+                  <div class="field"><label>Oficina</label><input id="claimSeguradoOficina" placeholder="Oficina onde está o veículo"></div>
+                  <div class="field"><label>Número do Sinistro *</label><input id="claimSeguradoNumeroSinistro" placeholder="SIN-2026-001"></div>
+                </div>
+                
+                <!-- Campos para TERCEIRO -->
+                <div id="terceiroFields" style="display:none;">
+                  <h4 style="margin:16px 0 12px;color:var(--text-primary);font-size:14px;font-weight:600;">Dados do Terceiro</h4>
+                  <div class="field"><label>Número do Sinistro do Terceiro *</label><input id="claimTerceiroNumeroSinistro" placeholder="SIN-TERC-2026-001"></div>
+                  <div class="field"><label>Nome do Terceiro *</label><input id="claimTerceiroNome" placeholder="Nome completo"></div>
+                  <div class="field"><label>CPF do Terceiro *</label><input id="claimTerceiroCpf" placeholder="000.000.000-00"></div>
+                  <div class="grid2">
+                    <div class="field"><label>Modelo do Veículo *</label><input id="claimTerceiroVeiculoModelo" placeholder="Fiat Uno"></div>
+                    <div class="field"><label>Placa *</label><input id="claimTerceiroVeiculoPlaca" placeholder="XYZ-9999"></div>
+                  </div>
+                  <div class="field"><label>Oficina</label><input id="claimTerceiroOficina" placeholder="Oficina onde está o veículo do terceiro"></div>
+                </div>
+                
+                <div class="form-footer"><button class="btn primary" onclick="createClaim(event)">Registrar sinistro</button></div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card">
+              <div class="card-header"><div class="card-title">Sinistros por mês</div></div>
+              <div class="card-body" id="sinistroChart"></div>
+            </div>
+            <div class="card" style="margin-top:20px;">
+              <div class="card-header"><div class="card-title" id="sinistrosTableTitle">Sinistros ativos - segurados</div></div>
+              <div class="table-wrap">
+                <table id="sinistrosTable">
+                  <thead><tr><th>Cliente</th><th>Nº do Sinistro</th><th>Ramo/Tipo</th><th>Status</th><th>Ações</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card" style="margin-top:20px;">
+              <div class="card-header"><div class="card-title" id="terceirosTableTitle">Sinistros ativos - terceiros</div></div>
+              <div class="table-wrap">
+                <table id="terceirosTable">
+                  <thead><tr><th>Terceiro</th><th>Nº do Sinistro</th><th>Veículo</th><th>Status</th><th>Ações</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal de Detalhes do Sinistro -->
+  <div id="sinistroModal" class="modal" style="display:none;">
+    <div class="modal-overlay" onclick="closeSinistroModal()"></div>
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h2 class="modal-title">Detalhes do Sinistro</h2>
+        <button class="modal-close" onclick="closeSinistroModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="grid2-3" style="gap:24px;">
+          <!-- Informações do Sinistro -->
+          <div>
+            <div class="card" style="margin-bottom:20px;">
+              <div class="card-header">
+                <div class="card-title">Informações Gerais</div>
+              </div>
+              <div class="card-body">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border);">
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <span style="font-size:13px;color:var(--text-muted);font-weight:600;">STATUS ATUAL:</span>
+                    <span id="modalStatus">-</span>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn secondary" id="btnEditarSinistro" onclick="openEditSinistroModal()" style="padding:8px 16px;font-size:13px;">Editar</button>
+                    <button class="btn secondary" id="btnExcluirSinistro" onclick="deleteSinistro()" style="padding:8px 16px;font-size:13px;color:var(--red);">Excluir</button>
+                    <button class="btn secondary" id="btnFinalizarSinistro" onclick="finalizarSinistro()" style="padding:8px 16px;font-size:13px;">✓ Finalizar Sinistro</button>
+                  </div>
+                </div>
+                <div class="info-grid">
+                  <div><div class="info-label">Protocolo</div><div class="info-value" id="modalProtocol">-</div></div>
+                  <div><div class="info-label">Tipo de Envolvido</div><div class="info-value" id="modalTipoEnvolvido">-</div></div>
+                  <div><div class="info-label">Nome</div><div class="info-value" id="modalNome">-</div></div>
+                  <div><div class="info-label">CPF</div><div class="info-value" id="modalCpf">-</div></div>
+                  <div><div class="info-label">Vendedor Responsável</div><div class="info-value" id="modalSeller">-</div></div>
+                  <div><div class="info-label">Apólice</div><div class="info-value" id="modalPolicy">-</div></div>
+                  <div><div class="info-label">Seguradora</div><div class="info-value" id="modalInsurer">-</div></div>
+                  <div><div class="info-label">Tipo</div><div class="info-value" id="modalType">-</div></div>
+                  <div><div class="info-label">Número do Sinistro</div><div class="info-value" id="modalNumeroSinistro">-</div></div>
+                  <div><div class="info-label">Data Abertura</div><div class="info-value" id="modalOpenedAt">-</div></div>
+                  <div><div class="info-label">Data do Sinistro</div><div class="info-value" id="modalSinistroDate">-</div></div>
+                  <div><div class="info-label">Data do Aviso</div><div class="info-value" id="modalAvisoDate">-</div></div>
+                  <div><div class="info-label">Modelo do Veículo</div><div class="info-value" id="modalVeiculoModelo">-</div></div>
+                  <div><div class="info-label">Placa</div><div class="info-value" id="modalVeiculoPlaca">-</div></div>
+                  <div><div class="info-label">Oficina</div><div class="info-value" id="modalOficina">-</div></div>
+                  <div style="grid-column: 1/-1;"><div class="info-label">Descrição</div><div class="info-value" id="modalDescription">-</div></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" id="terceiroCard" style="display:none;margin-bottom:20px;">
+              <div class="card-header"><div class="card-title">Dados do Terceiro Envolvido</div></div>
+              <div class="card-body">
+                <div class="info-grid">
+                  <div><div class="info-label">Nome</div><div class="info-value" id="modalTerceiroNome">-</div></div>
+                  <div><div class="info-label">CPF</div><div class="info-value" id="modalTerceiroCpf">-</div></div>
+                  <div><div class="info-label">Modelo do Veículo</div><div class="info-value" id="modalTerceiroVeiculoModelo">-</div></div>
+                  <div><div class="info-label">Placa</div><div class="info-value" id="modalTerceiroVeiculoPlaca">-</div></div>
+                  <div><div class="info-label">Oficina</div><div class="info-value" id="modalTerceiroOficina">-</div></div>
+                  <div><div class="info-label">Número do Sinistro</div><div class="info-value" id="modalTerceiroNumeroSinistro">-</div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Anexos -->
+            <div class="card">
+              <div class="card-header"><div class="card-title">Documentos Anexos</div></div>
+              <div class="card-body">
+                <div class="field">
+                  <label>Anexar novo documento</label>
+                  <input type="file" id="attachmentFile" style="display:none;" onchange="uploadAttachment()">
+                  <button class="btn secondary" onclick="document.getElementById('attachmentFile').click()" style="width:100%;">Selecionar arquivo</button>
+                </div>
+                <div id="attachmentsList" style="margin-top:16px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Andamentos -->
+          <div>
+            <div class="card" style="margin-bottom:20px;">
+              <div class="card-header"><div class="card-title">Alterar Status</div></div>
+              <div class="card-body">
+                <div class="field">
+                  <label>Selecione o novo status</label>
+                  <select id="sinistroStatusSelect">
+                    <option value="Em andamento">Em andamento</option>
+                    <option value="Aguardando vistoria">Aguardando vistoria</option>
+                    <option value="Aguardando documentos">Aguardando documentos</option>
+                    <option value="Em análise">Em análise</option>
+                    <option value="Aguardando peças">Aguardando peças</option>
+                    <option value="Em reparo">Em reparo</option>
+                    <option value="Reparo concluído">Reparo concluído</option>
+                  </select>
+                  <button class="btn primary" onclick="updateSinistroStatus()" style="margin-top:8px;width:100%;">Atualizar Status</button>
+                </div>
+              </div>
+            </div>
+            
+            <div class="card">
+              <div class="card-header"><div class="card-title">Andamentos</div></div>
+              <div class="card-body">
+                <div class="field">
+                  <label>Adicionar andamento</label>
+                  <textarea id="newHistoryEvent" placeholder="Ex: Veículo realizou vistoria..." rows="3"></textarea>
+                  <button class="btn primary" onclick="addHistoryEvent()" style="margin-top:8px;width:100%;">Adicionar</button>
+                </div>
+                <div id="historyTimeline" style="margin-top:24px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Edição do Sinistro -->
+  <div id="editSinistroModal" class="modal" style="display:none;">
+    <div class="modal-overlay" onclick="closeEditSinistroModal()"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">Editar Sinistro</h2>
+        <button class="modal-close" onclick="closeEditSinistroModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="grid2">
+          <div class="field"><label>Nome</label><input id="editSinistroClient"></div>
+          <div class="field"><label>CPF</label><input id="editSinistroCpf"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Número do Sinistro</label><input id="editSinistroNumero"></div>
+          <div class="field"><label>Ramo/Tipo</label><input id="editSinistroType"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Modelo do Veículo</label><input id="editSinistroVeiculoModelo"></div>
+          <div class="field"><label>Placa</label><input id="editSinistroVeiculoPlaca"></div>
+        </div>
+        <div class="field"><label>Oficina</label><input id="editSinistroOficina"></div>
+        <div class="grid2">
+          <div class="field"><label>Data do Sinistro</label><input id="editSinistroDate" type="date"></div>
+          <div class="field"><label>Data do Aviso</label><input id="editAvisoDate" type="date"></div>
+        </div>
+        <div class="field"><label>Descrição</label><textarea id="editSinistroDescription" rows="3"></textarea></div>
+        <div class="form-footer">
+          <button class="btn secondary" onclick="closeEditSinistroModal()">Cancelar</button>
+          <button class="btn primary" onclick="saveSinistroEdit()">Salvar alterações</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Criar Proposta a partir de Indicação -->
+  <div id="createProposalFromLeadModal" class="modal" style="display:none;">
+    <div class="modal-overlay" onclick="closeCreateProposalModal()"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">Criar proposta</h2>
+        <button class="modal-close" onclick="closeCreateProposalModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="field"><label>Cliente *</label><input id="saleClient" placeholder="Nome do cliente"></div>
+        <div class="field"><label>CPF *</label><input id="saleCpf" placeholder="000.000.000-00"></div>
+        <div class="grid2">
+          <div class="field"><label>Seguradora *</label><select id="saleInsurer"><option value="">Selecione</option><option>Porto Seguro</option><option>Bradesco Seguros</option><option>Allianz</option><option>SulAmérica</option><option>HDI Seguros</option></select></div>
+          <div class="field"><label>Tipo de seguro *</label><select id="saleType"><option>Automóvel</option><option>Residencial</option><option>Vida</option><option>Empresarial</option></select></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Vencimento da 1ª parcela</label><input type="date" id="saleFirstDue"></div>
+          <div class="field"><label>Início de vigência</label><input type="date" id="saleStart"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Fim de vigência</label><input type="date" id="saleEnd"></div>
+          <div class="field"><label>PDF da proposta</label><input type="file" id="salePdf" accept=".pdf,application/pdf"></div>
+        </div>
+        <div class="field"><label>Observações</label><textarea id="saleNotes" placeholder="Notas da proposta..." rows="3"></textarea></div>
+        <div class="form-footer">
+          <button class="btn secondary" onclick="closeCreateProposalModal()">Cancelar</button>
+          <button class="btn primary" id="btnCreateProposalSubmit" onclick="createProposal(event, true)">Enviar para emissão</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Não Fechado -->
+  <div id="naoFechadoModal" class="modal" style="display:none;">
+    <div class="modal-overlay" onclick="cancelNaoFechado()"></div>
+    <div class="modal-content" style="max-width:440px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Indicação não fechada</h2>
+        <button class="modal-close" onclick="cancelNaoFechado()">×</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px;">Informe o motivo pelo qual a indicação não foi convertida.</p>
+        <div class="field"><label>Motivo *</label><textarea id="naoFechadoMotivo" placeholder="Ex: Cliente optou por outra seguradora, não tinha interesse real..." rows="4"></textarea></div>
+        <div class="form-footer">
+          <button class="btn secondary" onclick="cancelNaoFechado()">Cancelar</button>
+          <button class="btn primary" onclick="confirmNaoFechado()">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="naoRenovadoModal" class="modal" style="display:none;">
+    <div class="modal-overlay" onclick="cancelNaoRenovado()"></div>
+    <div class="modal-content" style="max-width:440px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Renovação não concluída</h2>
+        <button class="modal-close" onclick="cancelNaoRenovado()">×</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px;">Informe o motivo pelo qual a renovação não foi concluída e será movida para não renovadas.</p>
+        <div class="field"><label>Motivo *</label><textarea id="naoRenovadoMotivo" placeholder="Ex: Cliente não teve interesse na renovação, apólice foi cancelada, preço elevado..." rows="4"></textarea></div>
+        <div class="form-footer">
+          <button class="btn secondary" onclick="cancelNaoRenovado()">Cancelar</button>
+          <button class="btn primary" onclick="confirmNaoRenovado()">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Correção de Proposta Devolvida -->
+  <div id="editProposalModal" class="modal" style="display:none;">
+    <div class="modal-overlay" onclick="closeEditProposalModal()"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">Corrigir proposta devolvida</h2>
+        <button class="modal-close" onclick="closeEditProposalModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="editProposalReason" class="alert-warning" style="margin-bottom:16px;padding:12px;border-radius:8px;background:var(--warning-bg);color:var(--warning);"></div>
+        <div class="field"><label>Cliente</label><input id="editPropClient"></div>
+        <div class="field"><label>CPF</label><input id="editPropCpf"></div>
+        <div class="grid2">
+          <div class="field"><label>Seguradora</label><select id="editPropInsurer"><option>Porto Seguro</option><option>Bradesco Seguros</option><option>Allianz</option><option>SulAmérica</option><option>HDI Seguros</option></select></div>
+          <div class="field"><label>Tipo</label><select id="editPropType"><option>Automóvel</option><option>Residencial</option><option>Vida</option><option>Empresarial</option></select></div>
+        </div>
+        <div class="field"><label>Novo PDF da proposta</label><input type="file" id="editPropPdf" accept=".pdf,application/pdf"></div>
+        <div class="grid2">
+          <div class="field"><label>Vencimento 1ª parcela</label><input type="date" id="editPropFirstDue"></div>
+          <div class="field"><label>Início de vigência</label><input type="date" id="editPropStart"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Fim de vigência</label><input type="date" id="editPropEnd"></div>
+          <div class="field"><label>Observações</label><textarea id="editPropNotes" rows="2"></textarea></div>
+        </div>
+        <div class="form-footer">
+          <button class="btn secondary" onclick="closeEditProposalModal()">Cancelar</button>
+          <button class="btn primary" onclick="saveAndResubmitProposal()">Salvar e reenviar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
