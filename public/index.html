@@ -20,7 +20,7 @@
       <button class="topbar-nav-btn active" data-roles="vendedor,emissao,sinistro,gestor" onclick="showScreen('dashboard', this)">Dashboard</button>
       <button class="topbar-nav-btn" data-roles="vendedor,gestor" onclick="showScreen('indicacoes', this)">Indicações</button>
       <button class="topbar-nav-btn" data-roles="vendedor,gestor" onclick="showScreen('renovacao', this)">Renovação</button>
-      <button class="topbar-nav-btn" data-roles="vendedor,gestor" onclick="showScreen('seguros', this)">Seguros</button>
+      <button class="topbar-nav-btn" data-roles="vendedor" onclick="showScreen('seguros', this)">Seguros</button>
       <button class="topbar-nav-btn" data-roles="vendedor,gestor" onclick="showScreen('apolice', this)">Apólices</button>
       <button class="topbar-nav-btn" data-roles="emissao,gestor" onclick="showScreen('emissao', this)">Emissão</button>
       <button class="topbar-nav-btn" data-roles="sinistro,gestor" onclick="showScreen('sinistros', this)">Sinistros</button>
@@ -48,10 +48,10 @@
       <div class="sidebar-item" data-roles="vendedor,gestor" onclick="showScreen('renovacao', null, this)">
         <span>Renovação</span>
       </div>
-      <div class="sidebar-item" data-roles="vendedor,gestor" onclick="showScreen('seguros', null, this)">
+      <div class="sidebar-item" data-roles="vendedor" onclick="showScreen('seguros', null, this)">
         <span>Seguros</span>
       </div>
-      <div class="sidebar-item" data-roles="vendedor,gestor" onclick="showScreen('apolice', null, this)">
+      <div class="sidebar-item" data-roles="vendedor,gestor,sinistro" onclick="showScreen('apolice', null, this)">
         <span>Apólices</span>
       </div>
       <div class="sidebar-item" data-roles="emissao,gestor" onclick="showScreen('emissao', null, this)">
@@ -185,11 +185,14 @@
               <div class="field"><label>RAMO</label><select id="renewalType"><option value="">Selecione o ramo</option><option>Automóvel</option><option>Residencial</option><option>Vida</option><option>Empresarial</option><option>Rural</option><option>Outros</option></select></div>
             </div>
             <div class="grid2">
+              <div class="field"><label>INÍCIO DA VIGÊNCIA</label><input type="date" id="renewalStart" tabindex="0"></div>
               <div class="field"><label>FINAL DA VIGÊNCIA</label><input type="date" id="renewalEnd" tabindex="0"></div>
-              <div class="field"><label>TELEFONE</label><input id="renewalPhone" placeholder="(53) 99999-0000" tabindex="0"></div>
             </div>
             <div class="grid2">
               <div class="field"><label>PDF DA APÓLICE</label><input type="file" id="renewalPolicyPdf" accept=".pdf,application/pdf" tabindex="0"></div>
+              <div class="field"><label>TELEFONE</label><input id="renewalPhone" placeholder="(53) 99999-0000" tabindex="0"></div>
+            </div>
+            <div class="grid2">
               <div class="field"><label>Vendedor</label><select id="renewalSeller" tabindex="0"><option value="">Selecione um vendedor</option><option value="vendedor">Carla Vendas</option></select></div>
             </div>
             <div class="form-footer"><button class="btn primary" onclick="sendRenewalRequest(event)">Enviar renovação ao vendedor</button></div>
@@ -225,10 +228,19 @@
         </div>
 
         <div class="card">
-          <div class="card-header"><div class="card-title">Renovações recebidas</div></div>
+          <div class="card-header"><div class="card-title">Renovações enviadas</div></div>
           <div class="table-wrap">
             <table id="renovacoesTable">
               <thead><tr><th>Cliente</th><th>CPF</th><th>Telefone</th><th>Apólice</th><th>Seguradora</th><th>Tipo</th><th>Vencimento</th><th>PDF</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card" style="margin-top:32px;">
+          <div class="card-header"><div class="card-title">Renovações fechadas</div></div>
+          <div class="table-wrap">
+            <table id="renewalClosedPoliciesTable">
+              <thead><tr><th>Apólice</th><th>Cliente</th><th>CPF</th><th>Seguradora</th><th>Tipo</th><th>Status</th><th>PDF</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -685,6 +697,38 @@
         <div class="form-footer">
           <button class="btn secondary" onclick="closeEditProposalModal()">Cancelar</button>
           <button class="btn primary" onclick="saveAndResubmitProposal()">Salvar e reenviar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="rejectProposalModal" class="modal" style="display:none;">
+    <div class="modal-overlay" onclick="closeRejectProposalModal()"></div>
+    <div class="modal-content" style="max-width:500px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Devolver ao vendedor</h2>
+        <button class="modal-close" onclick="closeRejectProposalModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px;">Escolha um motivo e, se desejar, adicione observações para o vendedor.</p>
+        <div class="field">
+          <label>Motivo da devolução *</label>
+          <select id="rejectProposalReason">
+            <option value="">Selecione um motivo</option>
+            <option>Pagamento recusado</option>
+            <option>Vistoria pendente</option>
+            <option>Documentação incompleta</option>
+            <option>Erro cadastral</option>
+            <option>Outros</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Observações (opcional)</label>
+          <textarea id="rejectProposalNotes" rows="4" placeholder="Ex: Precisa corrigir CPF, revisar dados do contrato..." style="min-height:100px;"></textarea>
+        </div>
+        <div class="form-footer">
+          <button class="btn secondary" onclick="closeRejectProposalModal()">Cancelar</button>
+          <button class="btn primary" onclick="confirmRejectProposal()">Devolver ao vendedor</button>
         </div>
       </div>
     </div>

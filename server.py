@@ -1013,6 +1013,7 @@ def api_create_renewal():
     insurer = str(request.form.get('insurer', '')).strip()
     ptype = str(request.form.get('type', 'Desconhecido')).strip()
     phone = str(request.form.get('phone', '')).strip()
+    start_date = str(request.form.get('start', '')).strip()
     end_date = str(request.form.get('end', '')).strip()
     seller = str(request.form.get('seller', '')).strip()
 
@@ -1020,6 +1021,8 @@ def api_create_renewal():
         return jsonify(message='Informe cliente, CPF e seguradora.'), 400
     if not phone:
         return jsonify(message='Informe telefone para a renovação.'), 400
+    if not start_date:
+        return jsonify(message='Informe o início da vigência para a renovação.'), 400
     if not end_date:
         return jsonify(message='Informe a final de vigência para a renovação.'), 400
     if not seller:
@@ -1042,7 +1045,7 @@ def api_create_renewal():
 
     pid = db_run(
         "INSERT INTO policies (number,client,cpf,insurer,type,start,end,premium,status,seller,phone,pdfFilename,pdfOriginalName) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (number, client, cpf, insurer, ptype, start, end_date, premium, 'Renovação solicitada', seller, phone, pdf_filename, pdf_original)
+        (number, client, cpf, insurer, ptype, start_date, end_date, premium, 'Renovação solicitada', seller, phone, pdf_filename, pdf_original)
     )
     created = db_get('SELECT * FROM policies WHERE id=?', (pid,))
     print(f"[INFO] Renovação criada pelo gestor {u['username']} para vendedor {seller}: apólice {number}")
@@ -1450,8 +1453,10 @@ def not_found(e):
 # ─────────────────────────────────────────────
 # Run
 # ─────────────────────────────────────────────
+# Garantir migrações no início, mesmo quando o módulo for importado para testes.
+init_db()
+
 if __name__ == '__main__':
-    init_db()
     port = int(os.environ.get('PORT', 3000))
     print(f"[INFO] SeguraTech rodando em http://localhost:{port}")
     print(f"[INFO] Perfis: vendedor/vendas123 · emissao/emissao123 · sinistro/sinistro123 · gestor/gestor123")

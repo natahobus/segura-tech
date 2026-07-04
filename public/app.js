@@ -71,7 +71,7 @@ function allowedRoles() {
     vendedor: ['dashboard', 'indicacoes', 'renovacao', 'seguros', 'apolice'],
     emissao: ['dashboard', 'emissao', 'apolice'],
     sinistro: ['dashboard', 'sinistros', 'apolice'],
-    gestor: ['dashboard', 'indicacoes', 'renovacao', 'seguros', 'apolice', 'emissao', 'sinistros']
+    gestor: ['dashboard', 'indicacoes', 'renovacao', 'apolice', 'emissao', 'sinistros']
   };
   return rolesMap[currentRole] || ['dashboard'];
 }
@@ -746,10 +746,16 @@ async function createRenewalProposal(event) {
     const prop = await apiFetch('/propostas', { method: 'POST', body: formData });
     if (prop?.id) {
       await apiFetch(`/propostas/${prop.id}/send`, { method: 'POST', body: JSON.stringify({}) });
+      if (activeRenewalPolicyId) {
+        await apiFetch(`/apolices/${activeRenewalPolicyId}/status`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: 'Fechado' })
+        });
+      }
     }
-    showSuccessNotification('Proposta criada e enviada para emissão.');
+    showSuccessNotification('Proposta criada e enviada para emissão. Renovação movida para seguros fechados.');
     clearRenewalProposalCard();
-    await Promise.all([loadRenovacoes(), loadDashboard(), loadProposalQueue(), loadProposals()]);
+    await Promise.all([loadRenovacoes(), loadDashboard(), loadProposalQueue(), loadProposals(), loadSeguros()]);
   } catch (error) {
     showErrorNotification(`Erro: ${error.message}`);
   }
@@ -795,7 +801,7 @@ async function loadVendedores() {
 
 function clearRenewalForm() {
   // Não limpar renewalSeller — as options são populadas por loadVendedores e não devem ser zeradas
-  ['renewalPhone', 'renewalClient', 'renewalCpf', 'renewalInsurer', 'renewalEnd'].forEach(id => {
+  ['renewalPhone', 'renewalClient', 'renewalCpf', 'renewalInsurer', 'renewalStart', 'renewalEnd'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -805,6 +811,7 @@ function clearRenewalForm() {
 async function sendRenewalRequest(event) {
   if (event && event.preventDefault) event.preventDefault();
   const phone = document.getElementById('renewalPhone').value.trim();
+  const startDate = document.getElementById('renewalStart').value.trim();
   const endDate = document.getElementById('renewalEnd').value.trim();
   const pdfFile = document.getElementById('renewalPolicyPdf')?.files?.[0];
   const seller = document.getElementById('renewalSeller')?.value || '';
@@ -818,6 +825,7 @@ async function sendRenewalRequest(event) {
   if (!insurer) { showErrorNotification('Informe a seguradora.'); return; }
   if (!ptype) { showErrorNotification('Selecione o ramo.'); return; }
   if (!phone) { showErrorNotification('Informe o telefone do cliente.'); return; }
+  if (!startDate) { showErrorNotification('Informe o início da vigência.'); return; }
   if (!endDate) { showErrorNotification('Informe o final da vigência.'); return; }
   if (!seller) { showErrorNotification('Selecione o vendedor.'); return; }
   if (!pdfFile) { showErrorNotification('Anexe o PDF da apólice.'); return; }
@@ -825,6 +833,7 @@ async function sendRenewalRequest(event) {
   const formData = new FormData();
   formData.append('pdf', pdfFile);
   formData.append('phone', phone);
+  formData.append('start', startDate);
   formData.append('end', endDate);
   formData.append('seller', seller);
   formData.append('client', client);
@@ -865,11 +874,13 @@ async function markPolicyNotRenewed(policyId) {
 async function loadRenovacoes() {
   try {
     const data = await apiFetch('/renovacoes');
-    const pending = data.pending || [];
+    const pending = (data.pending || []).filter(p => p.status !== 'Não renovada');
     const notRenewed = data.notRenewed || [];
+    const closedPolicies = currentRole === 'gestor' ? await apiFetch('/apolices') : [];
     const tbody = document.querySelector('#renovacoesTable tbody');
+    const closedTbody = document.querySelector('#renewalClosedPoliciesTable tbody');
     const notRenewedTbody = document.querySelector('#notRenewedTable tbody');
-    if (!tbody || !notRenewedTbody) return;
+    if (!tbody || !notRenewedTbody || !closedTbody) return;
 
     const managerRenewalCard = document.getElementById('gestorRenewalCard');
     if (managerRenewalCard) {
@@ -912,6 +923,21 @@ async function loadRenovacoes() {
       </tr>`;
     }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">Nenhuma renovação encontrada.</td></tr>';
 
+      if (closedPolicies && closedPolicies.length) {
+        const closedList = (closedPolicies || []).filter(p => ['Fechado', 'Emitida', 'Finalizado'].includes(p.status));
+        closedTbody.innerHTML = closedList.length ? closedList.map(p => `
+          <tr>
+            <td>${escapeHtml(p.number || '')}</td>
+            <td>${escapeHtml(p.client || '')}</td>
+            <td>${escapeHtml(p.cpf || '-')}</td>
+            <td>${escapeHtml(p.insurer || '')}</td>
+            <td>${escapeHtml(p.type || '')}</td>
+            <td><span class="badge ${getBadgeClass(p.status)}">${escapeHtml(p.status || '')}</span></td>
+            <td>${p.pdfFilename ? `<button class="btn secondary" style="padding:6px 12px;font-size:12px;" onclick="viewPolicyPdf(${p.id})">Ver PDF</button>` : '<span style="color:var(--text-muted);">Sem PDF</span>'}</td>
+          </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px;">Nenhuma renovação fechada encontrada.</td></tr>';
+      } else {
+        closedTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px;">Nenhuma renovação fechada encontrada.</td></tr>';
+      }
       notRenewedTbody.innerHTML = notRenewed.length ? notRenewed.map(p => `
       <tr>
         <td>${escapeHtml(p.client || '')}</td>
@@ -978,12 +1004,14 @@ async function confirmNaoRenovado() {
 async function loadSeguros() {
   try {
     const proposals = await apiFetch('/propostas');
-    const closedPolicies = await apiFetch('/apolices');
+    const allPolicies = await apiFetch('/apolices');
+    const closedStatuses = ['Fechado', 'Emitida', 'Finalizado'];
+    const closedPolicies = (allPolicies || []).filter(p => closedStatuses.includes(p.status));
     const closedTbody = document.querySelector('#closedPoliciesTable tbody');
     const openTbody = document.querySelector('#openPoliciesTable tbody');
 
     if (closedTbody) {
-      closedTbody.innerHTML = (closedPolicies || []).length ? (closedPolicies || []).map(p => `
+      closedTbody.innerHTML = closedPolicies.length ? closedPolicies.map(p => `
         <tr>
           <td>${escapeHtml(p.number || '')}</td>
           <td>${escapeHtml(p.client || '')}</td>
@@ -992,7 +1020,7 @@ async function loadSeguros() {
           <td>${escapeHtml(p.type || '')}</td>
           <td><span class="badge ${getBadgeClass(p.status)}">${escapeHtml(p.status || '')}</span></td>
           <td>${p.pdfFilename ? `<button class="btn secondary" style="padding:6px 12px;font-size:12px;" onclick="viewPolicyPdf(${p.id})">Ver PDF</button>` : '<span style="color:var(--text-muted);">Sem PDF</span>'}</td>
-        </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px;">Nenhuma apólice encontrada.</td></tr>';
+        </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px;">Nenhuma apólice fechada encontrada.</td></tr>';
     }
 
     if (openTbody) {
@@ -1067,6 +1095,7 @@ async function loadProposalQueue() {
 
 let selectedProposalId = null;
 let editingProposalId = null;
+let selectedRejectProposalId = null;
 
 async function selectProposal(proposalId) {
   selectedProposalId = proposalId;
@@ -1112,7 +1141,7 @@ async function selectProposal(proposalId) {
           <div class="field"><label>PDF da apólice *</label><input type="file" id="emitPolicyPdf" accept=".pdf,application/pdf"></div>
           <div class="form-footer" style="gap:10px;display:flex;flex-wrap:wrap;">
             <button class="btn primary" onclick="emitProposal(${proposal.id})">Anexar apólice e concluir</button>
-            <button class="btn secondary" onclick="rejectProposal(${proposal.id})">Devolver ao vendedor</button>
+            <button class="btn secondary" onclick="openRejectProposalModal(${proposal.id})">Devolver ao vendedor</button>
           </div>
         </div>
       ` : ''}
@@ -1365,27 +1394,41 @@ async function emitProposal(proposalId) {
   }
 }
 
-async function rejectProposal(proposalId) {
-  const reason = prompt(
-    'Motivo da devolução:\n1 Pagamento recusado\n2 Vistoria pendente\n3 Documentação incompleta\n4 Erro cadastral\n5 Outros\n\nDigite o número ou o texto do motivo:'
-  );
-  if (reason === null) return;
+function openRejectProposalModal(proposalId) {
+  selectedRejectProposalId = proposalId;
+  const modal = document.getElementById('rejectProposalModal');
+  if (!modal) return;
+  document.getElementById('rejectProposalReason').value = '';
+  document.getElementById('rejectProposalNotes').value = '';
+  modal.style.display = 'flex';
+}
 
-  const reasonMap = {
-    '1': 'Pagamento recusado', '2': 'Vistoria pendente', '3': 'Documentação incompleta',
-    '4': 'Erro cadastral', '5': 'Outros'
-  };
-  const allowed = ['Pagamento recusado', 'Vistoria pendente', 'Documentação incompleta', 'Erro cadastral', 'Outros'];
-  const trimmed = reason.trim();
-  const selectedReason = reasonMap[trimmed] || (allowed.includes(trimmed) ? trimmed : 'Outros');
-  const notes = prompt('Detalhes adicionais (opcional):') || '';
+function closeRejectProposalModal() {
+  selectedRejectProposalId = null;
+  const modal = document.getElementById('rejectProposalModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function confirmRejectProposal() {
+  const reason = document.getElementById('rejectProposalReason').value.trim();
+  const notes = document.getElementById('rejectProposalNotes').value.trim();
+
+  if (!reason) {
+    showErrorNotification('Selecione um motivo para a devolução.');
+    return;
+  }
+  if (!selectedRejectProposalId) {
+    showErrorNotification('Não foi possível identificar a proposta. Recarregue a página.');
+    return;
+  }
 
   try {
-    await apiFetch(`/propostas/${proposalId}/reject`, {
+    await apiFetch(`/propostas/${selectedRejectProposalId}/reject`, {
       method: 'POST',
-      body: JSON.stringify({ reason: selectedReason, notes })
+      body: JSON.stringify({ reason, notes })
     });
     showSuccessNotification('Proposta devolvida ao vendedor.');
+    closeRejectProposalModal();
     document.getElementById('proposalDetails').innerHTML = '<p style="color: var(--text-muted);">Selecione uma proposta para ver os detalhes.</p>';
     await Promise.all([loadProposalQueue(), loadProposals(), loadDashboard()]);
   } catch (error) {
