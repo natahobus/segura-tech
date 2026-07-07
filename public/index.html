@@ -44,9 +44,11 @@
       </div>
       <div class="sidebar-item" data-roles="vendedor,gestor" onclick="showScreen('indicacoes', null, this)">
         <span>Indicações</span>
+        <span class="sidebar-badge" id="badge-indicacoes" hidden></span>
       </div>
       <div class="sidebar-item" data-roles="vendedor,gestor" onclick="showScreen('renovacao', null, this)">
         <span>Renovação</span>
+        <span class="sidebar-badge" id="badge-renovacao" hidden></span>
       </div>
       <div class="sidebar-item" data-roles="vendedor" onclick="showScreen('seguros', null, this)">
         <span>Seguros</span>
@@ -56,9 +58,11 @@
       </div>
       <div class="sidebar-item" data-roles="emissao,gestor" onclick="showScreen('emissao', null, this)">
         <span>Emissão</span>
+        <span class="sidebar-badge" id="badge-emissao" hidden></span>
       </div>
       <div class="sidebar-item" data-roles="sinistro,gestor" onclick="showScreen('sinistros', null, this)">
         <span>Sinistros</span>
+        <span class="sidebar-badge" id="badge-sinistros" hidden></span>
       </div>
     </aside>
 
@@ -265,20 +269,20 @@
         </div>
 
         <div class="card" style="margin-bottom:20px;">
-          <div class="card-header"><div class="card-title">Seguros fechados</div></div>
+          <div class="card-header"><div class="card-title">Seguros em aberto</div></div>
           <div class="table-wrap">
-            <table id="closedPoliciesTable">
-              <thead><tr><th>Apólice</th><th>Cliente</th><th>CPF</th><th>Seguradora</th><th>Tipo</th><th>Status</th><th>PDF</th></tr></thead>
+            <table id="openPoliciesTable">
+              <thead><tr><th>Proposta</th><th>Cliente</th><th>CPF</th><th>Seguradora</th><th>Tipo</th><th>Status</th><th>Observações</th><th>Ações</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
         </div>
 
         <div class="card" style="margin-top:32px;">
-          <div class="card-header"><div class="card-title">Seguros em aberto</div></div>
+          <div class="card-header"><div class="card-title">Seguros fechados</div></div>
           <div class="table-wrap">
-            <table id="openPoliciesTable">
-              <thead><tr><th>Proposta</th><th>Cliente</th><th>CPF</th><th>Seguradora</th><th>Tipo</th><th>Status</th><th>Observações</th></tr></thead>
+            <table id="closedPoliciesTable">
+              <thead><tr><th>Apólice</th><th>Cliente</th><th>CPF</th><th>Seguradora</th><th>Tipo</th><th>Status</th><th>PDF</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>

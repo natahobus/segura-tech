@@ -202,9 +202,29 @@ async function refreshAll() {
   }
 }
 
+function setSidebarBadge(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const n = Number(value) || 0;
+  if (n > 0) {
+    el.textContent = n > 99 ? '99+' : String(n);
+    el.hidden = false;
+  } else {
+    el.hidden = true;
+  }
+}
+
+function updateSidebarBadges(data) {
+  setSidebarBadge('badge-indicacoes', data.openLeads);
+  setSidebarBadge('badge-renovacao', data.renewalPending);
+  setSidebarBadge('badge-emissao', data.pendingProposals);
+  setSidebarBadge('badge-sinistros', data.sinistrosAtivos);
+}
+
 async function loadDashboard() {
   try {
     const data = await apiFetch('/overview');
+    updateSidebarBadges(data);
     if (currentRole === 'sinistro') {
       const activeSinistros = await apiFetch('/sinistros');
       const finalizedSinistros = await apiFetch('/sinistros?finalized=true');
@@ -465,7 +485,7 @@ async function loadLeads() {
       await loadVendedores();
     }
 
-    const displayStatuses = ['Novo', 'Em contato', 'Aguardando resposta', 'Em proposta', 'Fechado'];
+    const displayStatuses = ['Novo', 'Em contato', 'Aguardando resposta', 'Em proposta'];
     const statusOptions = [
         { value: 'Novo', label: 'Novo' },
         { value: 'Em contato', label: 'Em contato' },
@@ -1034,7 +1054,8 @@ async function loadSeguros() {
           <td>${escapeHtml(p.type || '')}</td>
           <td><span class="badge ${getBadgeClass(p.status)}">${escapeHtml(p.status || '')}</span></td>
           <td style="max-width:220px;white-space:normal;font-size:13px;">${escapeHtml(p.notes || '-')}</td>
-        </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px;">Nenhuma proposta aberta encontrada.</td></tr>';
+          <td>${p.status === 'Devolvida' ? `<button class="btn secondary" style="padding:6px 12px;font-size:12px;" onclick="openEditProposalModal(${p.id})">Corrigir e reenviar</button>` : '-'}</td>
+        </tr>`).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px;">Nenhuma proposta aberta encontrada.</td></tr>';
     }
   } catch (error) {
     console.warn('Seguros load failed:', error);
@@ -1063,6 +1084,12 @@ async function attachPolicyPdfInline(policyId, input) {
   } catch (error) {
     showErrorNotification(`Erro: ${error.message}`);
   }
+}
+
+async function loadProposals() {
+  // Alias: mantém compatibilidade com chamadas antigas que esperavam
+  // atualizar a lista de propostas/seguros do vendedor.
+  await loadSeguros();
 }
 
 async function loadProposalQueue() {
