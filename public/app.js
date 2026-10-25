@@ -364,9 +364,9 @@ function renderDefaultDashboard(data) {
   if (leftBody) {
     leftBody.className = 'card-body';
     leftBody.innerHTML = `
-      <div class="bar-row"><span class="bar-label">Propostas aprovadas</span><div class="bar-track"><div class="bar-fill" style="width:72%"></div></div><span class="bar-val">72%</span></div>
-      <div class="bar-row"><span class="bar-label">Leads convertidos</span><div class="bar-track"><div class="bar-fill" style="width:49%"></div></div><span class="bar-val">49%</span></div>
-      <div class="bar-row"><span class="bar-label">Sinistros em análise</span><div class="bar-track"><div class="bar-fill" style="width:30%"></div></div><span class="bar-val">30%</span></div>
+      <div class="bar-row"><span class="bar-label">Propostas aprovadas</span><div class="bar-track"><div class="bar-fill" style="width:0%"></div></div><span class="bar-val">0%</span></div>
+      <div class="bar-row"><span class="bar-label">Leads convertidos</span><div class="bar-track"><div class="bar-fill" style="width:0%"></div></div><span class="bar-val">0%</span></div>
+      <div class="bar-row"><span class="bar-label">Sinistros em análise</span><div class="bar-track"><div class="bar-fill" style="width:0%"></div></div><span class="bar-val">0%</span></div>
     `;
   }
 
@@ -375,9 +375,9 @@ function renderDefaultDashboard(data) {
   if (rightBody) {
     rightBody.className = 'card-body status-mini';
     rightBody.innerHTML = `
-      <div class="status-mini-card"><div class="status-mini-label">Emissão</div><div class="status-mini-val" style="color: var(--blue)">9</div></div>
-      <div class="status-mini-card"><div class="status-mini-label">Sinistros</div><div class="status-mini-val" style="color: var(--amber)">5</div></div>
-      <div class="status-mini-card"><div class="status-mini-label">Leads</div><div class="status-mini-val" style="color: var(--green)">3</div></div>
+      <div class="status-mini-card"><div class="status-mini-label">Emissão</div><div class="status-mini-val" style="color: var(--blue)">${data.pendingProposals || 0}</div></div>
+      <div class="status-mini-card"><div class="status-mini-label">Sinistros</div><div class="status-mini-val" style="color: var(--amber)">${data.sinistrosAtivos || 0}</div></div>
+      <div class="status-mini-card"><div class="status-mini-label">Leads</div><div class="status-mini-val" style="color: var(--green)">${data.openLeads || 0}</div></div>
     `;
   }
 }
@@ -1318,6 +1318,53 @@ function clearPolicySearch() {
   loadPolicies();
 }
 
+let emissaoSearchTimeout = null;
+
+async function searchEmissaoApolices() {
+  clearTimeout(emissaoSearchTimeout);
+  const query = document.getElementById('emissaoApoliceSearch')?.value.trim() || '';
+  if (!query) {
+    const tbody = document.querySelector('#emissaoApolicesTable tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px;">Digite para buscar apólices.</td></tr>';
+    return;
+  }
+  emissaoSearchTimeout = setTimeout(async () => {
+    try {
+      const policies = await apiFetch(`/apolices?search=${encodeURIComponent(query)}`);
+      renderEmissaoApolicesTable(policies || []);
+    } catch (error) {
+      showErrorNotification('Erro ao buscar apólices.');
+    }
+  }, 300);
+}
+
+function clearEmissaoApoliceSearch() {
+  const input = document.getElementById('emissaoApoliceSearch');
+  if (input) input.value = '';
+  const tbody = document.querySelector('#emissaoApolicesTable tbody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px;">Digite para buscar apólices.</td></tr>';
+}
+
+function renderEmissaoApolicesTable(policies) {
+  const tbody = document.querySelector('#emissaoApolicesTable tbody');
+  if (!tbody) return;
+  tbody.innerHTML = policies.length ? policies.map(p => `
+    <tr>
+      <td>${escapeHtml(p.number || '')}</td>
+      <td>${escapeHtml(p.client || '')}</td>
+      <td>${escapeHtml(p.cpf || '-')}</td>
+      <td>${escapeHtml(p.insurer || '')}</td>
+      <td>${escapeHtml(p.type || '')}</td>
+      <td><span class="badge ${getBadgeClass(p.status)}">${escapeHtml(p.status || '')}</span></td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap;">
+        ${p.pdfFilename ? `<button class="btn secondary" style="padding:5px 10px;font-size:12px;" onclick="viewPolicyPdf(${p.id})">Ver PDF</button>` : ''}
+        ${p.pdfFilename ? `<button class="btn secondary" style="padding:5px 10px;font-size:12px;" onclick="downloadPolicyPdf(${p.id}, '${escapeAttribute(p.number || 'apolice')}')">Baixar</button>` : ''}
+        ${!p.pdfFilename ? `<label class="btn secondary" style="padding:5px 10px;font-size:12px;cursor:pointer;">Anexar PDF<input type="file" accept=".pdf,application/pdf" style="display:none;" onchange="attachPolicyPdfInline(${p.id}, this)"></label>` : ''}
+      </td>
+    </tr>
+  `).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px;">Nenhuma apólice encontrada.</td></tr>';
+}
+
 // Formulários
 async function createProposal(event, sendToEmissao = true) {
   event.preventDefault();
@@ -1700,28 +1747,42 @@ function getLeadBadgeClass(status) {
 }
 
 // Tema
+function renderThemeToggle(isDark) {
+  const toggle = document.querySelector('.theme-toggle');
+  if (!toggle) return;
+
+  const icon = isDark ? `
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.7"/>
+      <path d="M12 2.5v2.2M12 19.3v2.2M21.5 12h-2.2M4.7 12H2.5M18.6 5.4l-1.6 1.6M7 17l-1.6 1.6M18.6 18.6l-1.6-1.6M7 7L5.4 5.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    </svg>
+  ` : `
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M20 14.2A7.2 7.2 0 0 1 9.8 4a7.5 7.5 0 1 0 10.2 10.2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+    </svg>
+  `;
+
+  toggle.innerHTML = `${icon}<span>${isDark ? 'Claro' : 'Escuro'}</span>`;
+}
+
 function loadTheme() {
   const theme = localStorage.getItem('seguraTechTheme') || 'light';
   document.body.classList.toggle('dark', theme === 'dark');
-  const toggle = document.querySelector('.theme-toggle');
-  if (toggle) toggle.textContent = theme === 'dark' ? '☀️' : '🌙';
+  renderThemeToggle(theme === 'dark');
 }
 
 function toggleTheme() {
   const isDark = document.body.classList.toggle('dark');
   localStorage.setItem('seguraTechTheme', isDark ? 'dark' : 'light');
-  const toggle = document.querySelector('.theme-toggle');
-  if (toggle) toggle.textContent = isDark ? '☀️' : '🌙';
+  renderThemeToggle(isDark);
 }
 
 // Logout
 async function logout() {
-  try {
-    await apiFetch('/logout', { method: 'GET' });
-  } catch (e) {
-    // Silenciar erro de logout
-  } finally {
+  try { await apiFetch('/logout', { method: 'GET' }); } catch (e) {}
+  finally {
     localStorage.removeItem('seguraTechToken');
+    seguHistorico = [];
     window.location.href = '/';
   }
 }
@@ -2065,5 +2126,93 @@ async function finalizarSinistro() {
     await loadSinistros(false);
   } catch (error) {
     showErrorNotification(`Erro: ${error.message}`);
+  }
+}
+
+// ============================================
+// SEGU WIDGET
+// ============================================
+
+let seguHistorico = [];
+let seguAberto = false;
+
+function seguNovaConversa() {
+  seguHistorico = [];
+  const container = document.getElementById('seguMessages');
+  if (container) container.innerHTML = '';
+  seguAdicionarMensagem('bot', 'Nova conversa iniciada. Pode perguntar sobre seguros.');
+}
+
+function toggleSegu() {
+  const panel = document.getElementById('seguPanel');
+  seguAberto = !seguAberto;
+  panel.style.display = seguAberto ? 'flex' : 'none';
+  if (seguAberto && seguHistorico.length === 0) {
+    seguAdicionarMensagem('bot', 'Assistente interno. Pode perguntar sobre seguros.');
+  }
+  if (seguAberto) {
+    setTimeout(() => document.getElementById('seguPergunta')?.focus(), 100);
+  }
+}
+
+function seguAdicionarMensagem(tipo, texto) {
+  const container = document.getElementById('seguMessages');
+  if (!container) return;
+  const div = document.createElement('div');
+  div.className = `segu-msg ${tipo}`;
+  div.textContent = texto;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div;
+}
+
+function seguAtualizarContador() {
+  const input = document.getElementById('seguPergunta');
+  const counter = document.getElementById('seguCharCount');
+  if (counter && input) counter.textContent = input.value.length + '/800';
+}
+
+function seguKeydown(event) {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    seguEnviar();
+  }
+}
+
+async function seguEnviar() {
+  const input = document.getElementById('seguPergunta');
+  const btn = document.getElementById('seguEnviarBtn');
+  const pergunta = input?.value.trim() || '';
+
+  if (!pergunta || pergunta.length < 2) return;
+  if (pergunta.length > 800) {
+    seguAdicionarMensagem('bot', 'Limite de 800 caracteres por pergunta.');
+    return;
+  }
+
+  input.value = '';
+  seguAtualizarContador();
+  btn.disabled = true;
+  seguAdicionarMensagem('user', pergunta);
+  const loading = seguAdicionarMensagem('loading', 'Consultando...');
+
+  try {
+    const data = await apiFetch('/chat', {
+      method: 'POST',
+      body: JSON.stringify({ pergunta, historico: seguHistorico })
+    });
+    loading?.remove();
+
+    seguHistorico.push({ role: 'user', content: pergunta });
+    seguHistorico.push({ role: 'assistant', content: data.resposta });
+    if (seguHistorico.length > 20) seguHistorico = seguHistorico.slice(-20);
+
+    seguAdicionarMensagem('bot', data.resposta);
+  } catch (err) {
+    loading?.remove();
+    seguAdicionarMensagem('bot', err.message || 'Erro de conexão com o servidor.');
+  } finally {
+    btn.disabled = false;
+    input?.focus();
   }
 }

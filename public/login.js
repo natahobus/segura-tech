@@ -1,5 +1,11 @@
 const loginForm = document.getElementById('loginForm');
 const loginError = document.getElementById('loginError');
+const DEMO_USERS = {
+  v: { username: 'vendedor', password: 'vendas123' },
+  e: { username: 'emissao', password: 'emissao123' },
+  s: { username: 'sinistro', password: 'sinistro123' },
+  g: { username: 'gestor', password: 'gestor123' }
+};
 
 // Validadores simples
 function validateCredentials(username, password) {
@@ -11,6 +17,8 @@ function validateCredentials(username, password) {
 }
 
 function showError(message) {
+  document.body.classList.remove('login-transitioning');
+
   if (loginError) {
     loginError.textContent = message;
     loginError.style.animation = 'slideIn 0.3s ease';
@@ -20,6 +28,7 @@ function showError(message) {
 function clearError() {
   if (loginError) {
     loginError.textContent = '';
+    loginError.classList.remove('login-success');
   }
 }
 
@@ -33,13 +42,12 @@ function setLoading(isLoading) {
   }
 }
 
-loginForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  clearError();
+function triggerRedirectTransition() {
+  document.body.classList.add('login-transitioning');
+  setLoading(true);
+}
 
-  const username = document.getElementById('username').value;
-  const password = document.getElementById('password').value;
-
+async function submitLogin(username, password) {
   const error = validateCredentials(username, password);
   if (error) {
     showError(error);
@@ -64,45 +72,77 @@ loginForm.addEventListener('submit', async (event) => {
     }
 
     localStorage.setItem('seguraTechToken', result.token);
-    
-    // Feedback visual de sucesso
+
     if (loginError) {
-      loginError.textContent = 'Login bem-sucedido! Redirecionando...';
-      loginError.style.color = '#22863A';
+      loginError.textContent = 'Login bem-sucedido. Redirecionando...';
+      loginError.style.color = '';
+      loginError.style.borderLeftColor = '';
+      loginError.classList.add('login-success');
     }
-    
+
+    triggerRedirectTransition();
     setTimeout(() => {
       window.location.href = '/app';
-    }, 500);
+    }, 300);
   } catch (error) {
     console.error('Login error:', error);
     showError('Erro de rede. Verifique sua conexão e tente novamente.');
     setLoading(false);
   }
+}
+
+function fillDemoCredentials(agentKey) {
+  const user = DEMO_USERS[agentKey];
+  if (!user) return;
+
+  const usernameInput = document.getElementById('username');
+  const passwordInput = document.getElementById('password');
+
+  if (!usernameInput || !passwordInput) return;
+
+  usernameInput.value = user.username;
+  passwordInput.value = user.password;
+  clearError();
+}
+
+document.querySelectorAll('.login-shortcut').forEach((button) => {
+  button.addEventListener('click', () => {
+    fillDemoCredentials(button.dataset.demo);
+  });
 });
 
-// Melhorias UX
+loginForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  clearError();
+
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+
+  await submitLogin(username, password);
+});
+
+document.addEventListener('keydown', (event) => {
+  const key = event.key.toLowerCase();
+  const target = event.target;
+
+  if (!DEMO_USERS[key] || event.altKey || event.ctrlKey || event.metaKey) {
+    return;
+  }
+
+  const isTyping = target && (
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT'
+  );
+
+  if (isTyping && target && target.id !== 'username' && target.id !== 'password') {
+    return;
+  }
+
+  event.preventDefault();
+  fillDemoCredentials(key);
+});
+
 document.getElementById('username').addEventListener('focus', () => clearError());
 document.getElementById('password').addEventListener('focus', () => clearError());
-
-// Enter em qualquer campo envia o formulário
-document.getElementById('password').addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') loginForm.dispatchEvent(new Event('submit'));
-});
-
-// Teste rápido - pressione 'v', 'e', 's', 'g' para preencher
-const testUsers = {
-  'v': { user: 'vendedor', pass: 'vendas123' },
-  'e': { user: 'emissao', pass: 'emissao123' },
-  's': { user: 'sinistro', pass: 'sinistro123' },
-  'g': { user: 'gestor', pass: 'gestor123' }
-};
-
-document.addEventListener('keydown', (e) => {
-  if (testUsers[e.key.toLowerCase()]) {
-    const { user, pass } = testUsers[e.key.toLowerCase()];
-    document.getElementById('username').value = user;
-    document.getElementById('password').value = pass;
-  }
-});
 

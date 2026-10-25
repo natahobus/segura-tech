@@ -12,6 +12,22 @@ from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_from_directory, g, Response
 from flask_cors import CORS
 
+# Carrega .env manualmente (sem dependência de python-dotenv)
+# OPENROUTER_API_KEY e OPENROUTER_MODEL sempre prevalecem sobre variáveis do sistema
+_ENV_OVERRIDE = {'OPENROUTER_API_KEY', 'OPENROUTER_MODEL'}
+_env_path = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(_env_path):
+    with open(_env_path, encoding='utf-8') as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _v = _line.split('=', 1)
+                _k, _v = _k.strip(), _v.strip().strip('"').strip("'")
+                if _k in _ENV_OVERRIDE:
+                    os.environ[_k] = _v
+                else:
+                    os.environ.setdefault(_k, _v)
+
 app = Flask(__name__, static_folder='public', static_url_path='')
 CORS(app)
 
@@ -1438,6 +1454,132 @@ def api_finalizar_sinistro(sid):
     updated = db_get("SELECT * FROM sinistros WHERE id=?", (sid,))
     print(f"[INFO] Sinistro {sid} finalizado por {u['username']}")
     return jsonify(updated)
+
+
+# ─────────────────────────────────────────────
+# Segu — Assistente IA
+# ─────────────────────────────────────────────
+@app.post('/api/chat')
+@auth_required
+def api_chat():
+    import urllib.request as urllib_req
+    import urllib.error
+    import socket
+
+    api_key = os.environ.get('OPENROUTER_API_KEY', '').strip()
+    if not api_key:
+        return jsonify(erro='OPENROUTER_API_KEY não configurada no servidor.'), 503
+
+    model = os.environ.get('OPENROUTER_MODEL', 'openai/gpt-oss-120b')
+    app_url = os.environ.get('APP_URL', 'http://localhost:3000')
+
+    data = request.json or {}
+    pergunta = str(data.get('pergunta', '')).strip()
+    historico_raw = data.get('historico', [])
+
+    if not pergunta:
+        return jsonify(erro='A pergunta não pode estar vazia.'), 400
+    if len(pergunta) > 800:
+        return jsonify(erro='Limite de 800 caracteres por pergunta.'), 400
+
+    # Sanitizar histórico: apenas role user/assistant, content str, max 1000 chars, últimos 20
+    historico = []
+    if isinstance(historico_raw, list):
+        for item in historico_raw:
+            if not isinstance(item, dict):
+                continue
+            role = item.get('role', '')
+            content = item.get('content', '')
+            if role not in ('user', 'assistant') or not isinstance(content, str):
+                continue
+            historico.append({'role': role, 'content': content[:1000]})
+    historico = historico[-20:]
+
+    u = g.user
+    role_label = {
+        'vendedor': 'Vendedor/Corretor',
+        'emissao': 'Analista de Emissão',
+        'sinistro': 'Analista de Sinistro',
+        'gestor': 'Gestor da Corretora'
+    }.get(u['role'], u['role'])
+
+    system_prompt = f"""Voce e Segu, o assistente virtual interno da corretora SeguraTech.
+
+O usuario atual e {u['name']}, com perfil de {role_label}. Ele ja entende o basico do mercado de seguros.
+
+Sua personalidade:
+- Direto, tecnico quando necessario, sem enrolacao
+- Fala como um colega experiente tirando uma duvida rapida no meio do expediente
+- Honesto: se a resposta depende da seguradora ou da apolice, deixa isso claro
+- Nunca inventa coberturas, valores ou regras
+
+Voce ajuda com:
+- Duvidas sobre tipos de seguro e coberturas (auto, vida, residencial, saude, viagem, empresarial)
+- Como orientar o cliente em caso de sinistro
+- Terminologia tecnica do setor
+- Argumentos para apresentar ao cliente
+
+Formato:
+- Seja extremamente direto. 1 a 4 frases resolvem a maioria das perguntas.
+- Sem markdown (sem **negrito**, sem #cabecalhos): so texto simples
+- Nunca mais de 120 palavras, a menos que pedido explicitamente"""
+
+    mensagens = [
+        {'role': 'system', 'content': system_prompt},
+        *historico,
+        {'role': 'user', 'content': pergunta}
+    ]
+
+    payload = json.dumps({
+        'model': model,
+        'messages': mensagens,
+        'temperature': 0.6,
+        'max_completion_tokens': 1000,
+        'reasoning': {'effort': 'low'}
+    }).encode('utf-8')
+
+    req = urllib_req.Request(
+        'https://openrouter.ai/api/v1/chat/completions',
+        data=payload,
+        headers={
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+            'HTTP-Referer': app_url,
+            'X-OpenRouter-Title': 'Segu - SeguraTech'
+        },
+        method='POST'
+    )
+
+    _erros_http = {
+        401: 'Chave da IA inválida. Avise o administrador.',
+        402: 'Sem créditos na conta da IA.',
+        429: 'A IA está sobrecarregada, tente de novo em instantes.',
+    }
+
+    try:
+        with urllib_req.urlopen(req, timeout=60) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
+
+        msg = result.get('choices', [{}])[0].get('message', {})
+        resposta = msg.get('content') or msg.get('reasoning') or ''
+        resposta = resposta.strip()
+        if not resposta:
+            return jsonify(erro='Resposta vazia da IA.'), 502
+        return jsonify(resposta=resposta)
+
+    except urllib.error.HTTPError as e:
+        codigo = e.code
+        detalhe = e.read().decode('utf-8', errors='replace')
+        print(f'[SEGU] HTTPError {codigo}: {detalhe[:300]}')
+        mensagem = _erros_http.get(codigo, 'Erro ao consultar a IA.')
+        return jsonify(erro=mensagem), 502
+
+    except (urllib.error.URLError, socket.timeout, TimeoutError):
+        return jsonify(erro='A IA demorou para responder. Tente novamente.'), 502
+
+    except Exception as e:
+        print(f'[SEGU] Erro inesperado: {e}')
+        return jsonify(erro='Erro interno ao chamar a IA.'), 500
 
 
 # ─────────────────────────────────────────────

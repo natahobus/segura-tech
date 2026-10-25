@@ -4,44 +4,39 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SeguraTech — Acesso ao Sistema</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="login-page">
-  <div class="login-split-card">
 
-    <div class="login-split-left">
-      <div class="login-split-logo">ST</div>
-      <div class="login-split-title">SeguraTech</div>
-      <div class="login-split-subtitle">Gestão de apólices, propostas e sinistros em um só lugar.</div>
-      <ul class="login-split-list">
-        <li>Apólices e renovações centralizadas</li>
-        <li>Emissão e propostas com histórico</li>
-        <li>Sinistros com acompanhamento completo</li>
-      </ul>
+  <div class="login-box">
+    <div class="login-box-brand">
+      <div class="login-box-icon">ST</div>
+      <div class="login-box-name">SeguraTech</div>
     </div>
 
-    <div class="login-split-right">
-      <div class="login-split-right-header">
-        <div class="login-split-right-title">Bem-vindo de volta</div>
-        <div class="login-split-right-subtitle">Entre com suas credenciais para acessar o sistema</div>
+    <form id="loginForm" class="login-form">
+      <div class="field">
+        <label for="username">Usuário</label>
+        <input id="username" type="text" placeholder="seu usuário" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="password">Senha</label>
+        <input id="password" type="password" placeholder="sua senha" autocomplete="current-password" required>
+      </div>
+      <div id="loginError" class="login-error" aria-live="polite"></div>
+
+      <div class="login-shortcuts" aria-label="Acesso rápido por perfil">
+        <button type="button" class="login-shortcut" data-demo="v">Vendedor</button>
+        <button type="button" class="login-shortcut" data-demo="e">Emissão</button>
+        <button type="button" class="login-shortcut" data-demo="s">Sinistro</button>
+        <button type="button" class="login-shortcut" data-demo="g">Gestor</button>
       </div>
 
-      <form id="loginForm" class="login-form">
-        <div class="field">
-          <label for="username">Usuário</label>
-          <input id="username" type="text" placeholder="Digite seu usuário" autocomplete="username" required>
-        </div>
-
-        <div class="field">
-          <label for="password">Senha</label>
-          <input id="password" type="password" placeholder="Digite sua senha" autocomplete="current-password" required>
-        </div>
-
-        <div id="loginError" class="login-error" aria-live="polite"></div>
-        <button type="submit" class="btn primary login-submit">Entrar</button>
-      </form>
-    </div>
-
+      <button type="submit" class="btn primary login-submit">Entrar</button>
+    </form>
   </div>
 
   <script src="login.js"></script>
