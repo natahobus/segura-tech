@@ -6,3 +6,5 @@ npm-debug.log
 server.log
 .DS_Store
 uploads/
+
+.env
