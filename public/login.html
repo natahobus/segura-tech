@@ -26,16 +26,16 @@
         <label for="password">Senha</label>
         <input id="password" type="password" placeholder="sua senha" autocomplete="current-password" required>
       </div>
-      <div id="loginError" class="login-error" aria-live="polite"></div>
+      <div id="loginError" class="login-error" role="status" aria-live="polite" aria-atomic="true"></div>
 
       <div class="login-shortcuts" aria-label="Acesso rápido por perfil">
-        <button type="button" class="login-shortcut" data-demo="v">Vendedor</button>
-        <button type="button" class="login-shortcut" data-demo="e">Emissão</button>
-        <button type="button" class="login-shortcut" data-demo="s">Sinistro</button>
-        <button type="button" class="login-shortcut" data-demo="g">Gestor</button>
+        <button type="button" class="login-shortcut" data-demo="v" aria-label="Preencher acesso do vendedor" aria-pressed="false">Vendedor</button>
+        <button type="button" class="login-shortcut" data-demo="e" aria-label="Preencher acesso da emissão" aria-pressed="false">Emissão</button>
+        <button type="button" class="login-shortcut" data-demo="s" aria-label="Preencher acesso do setor de sinistros" aria-pressed="false">Sinistro</button>
+        <button type="button" class="login-shortcut" data-demo="g" aria-label="Preencher acesso do gestor" aria-pressed="false">Gestor</button>
       </div>
 
-      <button type="submit" class="btn primary login-submit">Entrar</button>
+      <button type="submit" class="btn primary login-submit" aria-label="Entrar no sistema">Entrar</button>
     </form>
   </div>
 

@@ -7,7 +7,13 @@ const DEMO_USERS = {
   g: { username: 'gestor', password: 'gestor123' }
 };
 
-// Validadores simples
+function getLoginInputs() {
+  return {
+    username: document.getElementById('username'),
+    password: document.getElementById('password')
+  };
+}
+
 function validateCredentials(username, password) {
   if (!username || username.trim().length === 0) return 'Informe seu usuário.';
   if (!password || password.length === 0) return 'Informe sua senha.';
@@ -16,30 +22,42 @@ function validateCredentials(username, password) {
   return null;
 }
 
-function showError(message) {
+function showError(message, isSuccess = false) {
   document.body.classList.remove('login-transitioning');
 
-  if (loginError) {
-    loginError.textContent = message;
-    loginError.style.animation = 'slideIn 0.3s ease';
-  }
+  if (!loginError) return;
+
+  loginError.textContent = message;
+  loginError.classList.toggle('login-success', isSuccess);
+  loginError.setAttribute('data-state', isSuccess ? 'success' : 'error');
+  loginError.style.animation = 'slideIn 0.3s ease';
 }
 
 function clearError() {
-  if (loginError) {
-    loginError.textContent = '';
-    loginError.classList.remove('login-success');
-  }
+  if (!loginError) return;
+
+  loginError.textContent = '';
+  loginError.classList.remove('login-success');
+  loginError.setAttribute('data-state', 'idle');
+  loginError.style.animation = '';
+}
+
+function setDemoState(activeKey) {
+  document.querySelectorAll('.login-shortcut').forEach((button) => {
+    const isActive = button.dataset.demo === activeKey;
+    button.setAttribute('aria-pressed', String(isActive));
+    button.classList.toggle('is-selected', isActive);
+  });
 }
 
 function setLoading(isLoading) {
-  const btn = loginForm.querySelector('button[type="submit"]');
-  if (btn) {
-    btn.disabled = isLoading;
-    btn.style.opacity = isLoading ? '0.6' : '1';
-    btn.style.cursor = isLoading ? 'not-allowed' : 'pointer';
-    btn.textContent = isLoading ? 'Carregando...' : 'Entrar';
-  }
+  const btn = loginForm ? loginForm.querySelector('button[type="submit"]') : null;
+  if (!btn) return;
+
+  btn.disabled = isLoading;
+  btn.style.opacity = isLoading ? '0.6' : '1';
+  btn.style.cursor = isLoading ? 'not-allowed' : 'pointer';
+  btn.textContent = isLoading ? 'Carregando...' : 'Entrar';
 }
 
 function triggerRedirectTransition() {
@@ -66,26 +84,21 @@ async function submitLogin(username, password) {
     const result = await response.json();
 
     if (!response.ok) {
+      setDemoState('');
       showError(result.message || 'Falha ao autenticar.');
       setLoading(false);
       return;
     }
 
     localStorage.setItem('seguraTechToken', result.token);
-
-    if (loginError) {
-      loginError.textContent = 'Login bem-sucedido. Redirecionando...';
-      loginError.style.color = '';
-      loginError.style.borderLeftColor = '';
-      loginError.classList.add('login-success');
-    }
-
+    clearError();
     triggerRedirectTransition();
     setTimeout(() => {
       window.location.href = '/app';
     }, 300);
   } catch (error) {
     console.error('Login error:', error);
+    setDemoState('');
     showError('Erro de rede. Verifique sua conexão e tente novamente.');
     setLoading(false);
   }
@@ -95,13 +108,12 @@ function fillDemoCredentials(agentKey) {
   const user = DEMO_USERS[agentKey];
   if (!user) return;
 
-  const usernameInput = document.getElementById('username');
-  const passwordInput = document.getElementById('password');
+  const { username, password } = getLoginInputs();
+  if (!username || !password) return;
 
-  if (!usernameInput || !passwordInput) return;
-
-  usernameInput.value = user.username;
-  passwordInput.value = user.password;
+  username.value = user.username;
+  password.value = user.password;
+  setDemoState(agentKey);
   clearError();
 }
 
@@ -111,38 +123,24 @@ document.querySelectorAll('.login-shortcut').forEach((button) => {
   });
 });
 
-loginForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  clearError();
+if (loginForm) {
+  loginForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    clearError();
 
-  const username = document.getElementById('username').value;
-  const password = document.getElementById('password').value;
+    const { username, password } = getLoginInputs();
+    if (!username || !password) return;
 
-  await submitLogin(username, password);
-});
+    await submitLogin(username.value, password.value);
+  });
+}
 
-document.addEventListener('keydown', (event) => {
-  const key = event.key.toLowerCase();
-  const target = event.target;
-
-  if (!DEMO_USERS[key] || event.altKey || event.ctrlKey || event.metaKey) {
-    return;
-  }
-
-  const isTyping = target && (
-    target.tagName === 'INPUT' ||
-    target.tagName === 'TEXTAREA' ||
-    target.tagName === 'SELECT'
-  );
-
-  if (isTyping && target && target.id !== 'username' && target.id !== 'password') {
-    return;
-  }
-
-  event.preventDefault();
-  fillDemoCredentials(key);
-});
-
-document.getElementById('username').addEventListener('focus', () => clearError());
-document.getElementById('password').addEventListener('focus', () => clearError());
+const usernameInput = document.getElementById('username');
+const passwordInput = document.getElementById('password');
+if (usernameInput) {
+  usernameInput.addEventListener('focus', () => clearError());
+}
+if (passwordInput) {
+  passwordInput.addEventListener('focus', () => clearError());
+}
 

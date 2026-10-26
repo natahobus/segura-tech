@@ -8,9 +8,10 @@ import sqlite3
 import os
 import secrets
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Flask, request, jsonify, send_from_directory, g, Response
 from flask_cors import CORS
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Carrega .env manualmente (sem dependência de python-dotenv)
 # OPENROUTER_API_KEY e OPENROUTER_MODEL sempre prevalecem sobre variáveis do sistema
@@ -76,8 +77,20 @@ POLICIES_UPLOAD = os.path.join(os.path.dirname(__file__), 'uploads', 'policies')
 def log_proposal_history(proposal_id, event, actor):
     db_run(
         "INSERT INTO proposal_history (proposal_id,date,event,actor) VALUES (?,?,?,?)",
-        (proposal_id, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), event, actor)
+        (proposal_id, datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'), event, actor)
     )
+
+
+def hash_password(value):
+    return generate_password_hash(value, method='pbkdf2:sha256')
+
+
+def verify_password(stored_password, supplied_password):
+    if not stored_password:
+        return False
+    if stored_password.startswith(('pbkdf2:', 'scrypt:', 'argon2:')):
+        return check_password_hash(stored_password, supplied_password)
+    return stored_password == supplied_password
 
 
 def save_pdf_upload(file, folder, prefix):
@@ -86,6 +99,13 @@ def save_pdf_upload(file, folder, prefix):
         return None, None
     if not file.filename.lower().endswith('.pdf'):
         raise ValueError('Apenas arquivos PDF são permitidos.')
+
+    file.stream.seek(0)
+    sample = file.read(4096)
+    file.stream.seek(0)
+    if not sample.startswith(b'%PDF'):
+        raise ValueError('Arquivo inválido: o PDF enviado parece corrompido ou não é um arquivo PDF real.')
+
     os.makedirs(folder, exist_ok=True)
     import time
     unique = f"{prefix}_{int(time.time())}_{secrets.token_hex(8)}.pdf"
@@ -264,6 +284,7 @@ def init_db():
         'pdfFilename': "TEXT",
         'pdfOriginalName': "TEXT",
         'notes': "TEXT",
+        'returnReason': "TEXT",
     }
     for column, definition in policy_columns.items():
         if column not in existing_policy_columns:
@@ -274,15 +295,20 @@ def init_db():
     c.execute("UPDATE proposals SET status='Aguardando emissão' WHERE status='Enviada'")
     c.execute("UPDATE proposals SET status='Emitida' WHERE status IN ('Aprovada', 'Emitida')")
 
+    existing_users = c.execute("SELECT id, username, password FROM users").fetchall()
+    for user_id, username, stored_password in existing_users:
+        if stored_password and not stored_password.startswith(('pbkdf2:', 'scrypt:', 'argon2:')):
+            c.execute("UPDATE users SET password=? WHERE id=?", (hash_password(stored_password), user_id))
+
     # Seed users
     if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
         c.executemany(
             "INSERT INTO users (username, password, role, name) VALUES (?,?,?,?)",
             [
-                ('vendedor',  'vendas123',    'vendedor',  'Carla Vendas'),
-                ('emissao',   'emissao123',   'emissao',   'Lucas Emissão'),
-                ('sinistro',  'sinistro123',  'sinistro',  'Patrícia Sinistro'),
-                ('gestor',    'gestor123',    'gestor',    'Carlos Mendes'),
+                ('vendedor',  hash_password('vendas123'),    'vendedor',  'Carla Vendas'),
+                ('emissao',   hash_password('emissao123'),   'emissao',   'Lucas Emissão'),
+                ('sinistro',  hash_password('sinistro123'),  'sinistro',  'Patrícia Sinistro'),
+                ('gestor',    hash_password('gestor123'),    'gestor',    'Carlos Mendes'),
             ]
         )
 
@@ -357,7 +383,8 @@ def init_db():
 def get_user_by_token(token):
     if not token:
         return None
-    cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    db_run("DELETE FROM sessions WHERE created_at <= ?", (cutoff,))
     return db_get(
         "SELECT u.* FROM users u JOIN sessions s ON s.user_id=u.id "
         "WHERE s.token=? AND s.created_at > ?",
@@ -376,6 +403,98 @@ def auth_required(f):
         g.user = user
         return f(*args, **kwargs)
     return decorated
+
+
+def roles_required(*allowed_roles):
+    def decorator(f):
+        from functools import wraps
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            token = request.headers.get('x-auth-token')
+            user = get_user_by_token(token)
+            if not user:
+                return jsonify(message='Sessão expirada ou inválida.'), 401
+            if user['role'] not in allowed_roles:
+                return jsonify(message='Acesso negado.'), 403
+            g.user = user
+            return f(*args, **kwargs)
+        return wrapped
+    return decorator
+
+
+def is_allowed_policy_access(user, policy):
+    if not policy:
+        return False
+    if user['role'] in ('gestor', 'emissao'):
+        return True
+    if user['role'] == 'vendedor':
+        return str(policy.get('seller') or '') == user['username']
+    if user['role'] == 'sinistro':
+        return True
+    return False
+
+
+def filter_policies_for_user(user, policies):
+    if user['role'] in ('gestor', 'emissao'):
+        return policies
+    if user['role'] == 'vendedor':
+        return [p for p in policies if str(p.get('seller') or '') == user['username']]
+    if user['role'] == 'sinistro':
+        return policies
+    return []
+
+
+def filter_sinistros_for_user(user, sinistros):
+    if user['role'] in ('gestor', 'sinistro'):
+        return sinistros
+    if user['role'] == 'vendedor':
+        return [s for s in sinistros if str(s.get('seller') or '') == user['username']]
+    return []
+
+
+# ─────────────────────────────────────────────
+# Security helpers
+# ─────────────────────────────────────────────
+LOGIN_ATTEMPTS = {}
+ALLOWED_SINISTRO_STATUS = {
+    'Em andamento',
+    'Aguardando vistoria',
+    'Aguardando documentos',
+    'Em análise',
+    'Aguardando peças',
+    'Em reparo',
+    'Reparo concluído',
+    'Finalizado',
+}
+
+
+def get_client_identifier():
+    forwarded = request.headers.get('X-Forwarded-For')
+    if forwarded:
+        try:
+            return forwarded.split(',')[0].strip()
+        except Exception:
+            return forwarded.strip()
+    return request.remote_addr or 'unknown'
+
+
+def register_failed_login(username):
+    key = f"{get_client_identifier()}:{str(username or '').strip().lower()}"
+    now = datetime.now(timezone.utc).timestamp()
+    attempts = LOGIN_ATTEMPTS.get(key, [])
+    attempts = [ts for ts in attempts if now - ts < 300]
+    attempts.append(now)
+    LOGIN_ATTEMPTS[key] = attempts
+    if len(attempts) >= 5:
+        return True
+    return False
+
+
+def validate_sinistro_status(status):
+    status = str(status or '').strip()
+    if status not in ALLOWED_SINISTRO_STATUS:
+        return None
+    return status
 
 
 # ─────────────────────────────────────────────
@@ -405,13 +524,22 @@ def api_login():
         return jsonify(message='Credenciais inválidas.'), 400
 
     user = db_get("SELECT * FROM users WHERE username=?", (username,))
-    if not user or user['password'] != password:
+    if not user or not verify_password(user['password'], password):
+        if register_failed_login(username):
+            return jsonify(message='Muitas tentativas de login. Tente novamente em alguns minutos.'), 429
         return jsonify(message='Usuário ou senha incorretos.'), 401
 
+    if not user['password'].startswith(('pbkdf2:', 'scrypt:', 'argon2:')):
+        db_run("UPDATE users SET password=? WHERE id=?", (hash_password(password), user['id']))
+
+    login_key = f"{get_client_identifier()}:{username.lower()}"
+    LOGIN_ATTEMPTS.pop(login_key, None)
+
+    db_run("DELETE FROM sessions WHERE user_id=?", (user['id'],))
     token = secrets.token_hex(32)
     db_run(
         "INSERT INTO sessions (token,user_id,created_at) VALUES (?,?,?)",
-        (token, user['id'], datetime.utcnow().isoformat())
+        (token, user['id'], datetime.now(timezone.utc).isoformat())
     )
     print(f"[INFO] Login: {username} ({user['role']})")
     return jsonify(token=token, name=user['name'], role=user['role'])
@@ -438,18 +566,33 @@ def api_overview():
     u = g.user
     policies = db_all("SELECT * FROM policies LIMIT 200")
     sinistros = db_all("SELECT * FROM sinistros ORDER BY id DESC LIMIT 500")
-    active = sum(1 for p in policies if p['status'] == 'Emitida')
-    renewal = sum(1 for p in policies if p['status'] != 'Emitida')
 
     if u['role'] == 'gestor':
         leads = db_all("SELECT * FROM leads LIMIT 200")
         proposals = db_all("SELECT * FROM proposals LIMIT 200")
     elif u['role'] == 'vendedor':
+        policies = filter_policies_for_user(u, policies)
+        sinistros = filter_sinistros_for_user(u, sinistros)
         leads = db_all("SELECT * FROM leads WHERE owner=? LIMIT 200", (u['username'],))
         proposals = db_all("SELECT * FROM proposals WHERE seller=? LIMIT 200", (u['username'],))
-    else:
+    elif u['role'] == 'sinistro':
+        policies = []
+        leads = []
+        proposals = []
+        sinistros = filter_sinistros_for_user(u, sinistros)
+    elif u['role'] == 'emissao':
+        policies = []
         leads = []
         proposals = db_all("SELECT * FROM proposals LIMIT 200")
+        sinistros = []
+    else:
+        policies = []
+        leads = []
+        proposals = []
+        sinistros = []
+
+    active = sum(1 for p in policies if p['status'] == 'Emitida')
+    renewal = sum(1 for p in policies if p['status'] != 'Emitida')
 
     open_leads = sum(1 for l in leads if l['status'] not in ('Fechado', 'Não fechado', 'Convertido'))
     pending = sum(1 for p in proposals if p['status'] in ('Em elaboração', 'Aguardando emissão', 'Devolvida'))
@@ -504,7 +647,7 @@ def api_create_lead():
     if not seller:
         return jsonify(message='Vendedor não encontrado.'), 404
 
-    created_at = datetime.utcnow().strftime('%Y-%m-%d')
+    created_at = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     lid = db_run(
         "INSERT INTO leads (client,phone,source,status,owner,notes,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?)",
         (client, phone, source, 'Novo', owner, notes, u['username'], created_at)
@@ -635,7 +778,7 @@ def api_propostas_post():
 
     import time
     policy_number = f"PROP-{int(time.time())}"
-    created_at = datetime.utcnow().strftime('%Y-%m-%d')
+    created_at = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
     lid = db_run(
         """INSERT INTO proposals (policyNumber,client,cpf,insurer,type,seller,status,createdAt,notes,firstDueDate,start,end,pdfFilename,pdfOriginalName)
@@ -743,27 +886,23 @@ def api_proposta_emit(pid):
     if not pdf_file or not pdf_file.filename:
         return jsonify(message='Anexe o PDF da apólice emitida no portal da seguradora.'), 400
 
+    existing = db_get("SELECT id FROM policies WHERE number=?", (policy_number,))
+    if existing:
+        return jsonify(message='Número da apólice já existe no cadastro. Escolha outro número para a emissão.'), 400
+
     try:
         pdf_filename, pdf_original = save_pdf_upload(pdf_file, POLICIES_UPLOAD, f'pol{pid}')
     except ValueError as e:
         return jsonify(message=str(e)), 400
 
-    start = datetime.utcnow().strftime('%Y-%m-%d')
-    end = (datetime.utcnow() + timedelta(days=365)).strftime('%Y-%m-%d')
+    start = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    end = (datetime.now(timezone.utc) + timedelta(days=365)).strftime('%Y-%m-%d')
 
-    existing = db_get("SELECT id FROM policies WHERE number=?", (policy_number,))
-    if existing:
-        db_run(
-            """UPDATE policies SET client=?, cpf=?, insurer=?, type=?, start=?, end=?, status=?, seller=?,
-               pdfFilename=?, pdfOriginalName=? WHERE id=?""",
-            (prop['client'], prop.get('cpf'), prop['insurer'], prop['type'], start, end, 'Emitida', prop['seller'], pdf_filename, pdf_original, existing['id'])
-        )
-    else:
-        db_run(
-            """INSERT INTO policies (number,client,cpf,insurer,type,start,end,premium,status,seller,pdfFilename,pdfOriginalName)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (policy_number, prop['client'], prop.get('cpf'), prop['insurer'], prop['type'], start, end, 0, 'Emitida', prop['seller'], pdf_filename, pdf_original)
-        )
+    db_run(
+        """INSERT INTO policies (number,client,cpf,insurer,type,start,end,premium,status,seller,pdfFilename,pdfOriginalName)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (policy_number, prop['client'], prop.get('cpf'), prop['insurer'], prop['type'], start, end, 0, 'Emitida', prop['seller'], pdf_filename, pdf_original)
+    )
 
     db_run("UPDATE proposals SET status=?, policyNumber=? WHERE id=?", ('Emitida', policy_number, pid))
     log_proposal_history(pid, f'Apólice {policy_number} anexada — status Emitida', u['name'])
@@ -817,7 +956,8 @@ def api_reject(pid):
 @auth_required
 def api_renovacoes():
     u = g.user
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
+    today = now.strftime('%Y-%m-%d')
     month_start = now.strftime('%Y-%m-01')
     if now.month == 12:
         month_end = f"{now.year}-12-31"
@@ -825,12 +965,22 @@ def api_renovacoes():
         next_month = datetime(now.year, now.month + 1, 1)
         month_end = (next_month - timedelta(days=1)).strftime('%Y-%m-%d')
 
+    due_window_start = today
+    due_window_end = (now + timedelta(days=45)).strftime('%Y-%m-%d')
+
     if u['role'] == 'gestor':
         pending = db_all(
             """SELECT * FROM policies
-               WHERE (status IN ('Renovar', 'Renovação solicitada') OR (status NOT IN ('Não renovada','Fechado','Finalizado') AND end >= ? AND end <= ?))
+               WHERE (
+                   status IN ('Renovar', 'Renovação solicitada')
+                   OR (
+                       status NOT IN ('Não renovada','Fechado','Finalizado')
+                       AND end IS NOT NULL
+                       AND end >= ? AND end <= ?
+                   )
+               )
                ORDER BY end ASC LIMIT 200""",
-            (month_start, month_end)
+            (due_window_start, due_window_end)
         )
         not_renewed = db_all(
             "SELECT * FROM policies WHERE status='Não renovada' ORDER BY end DESC LIMIT 200"
@@ -838,9 +988,16 @@ def api_renovacoes():
     elif u['role'] == 'vendedor':
         pending = db_all(
             """SELECT * FROM policies
-               WHERE seller=? AND (status IN ('Renovar', 'Renovação solicitada') OR (status NOT IN ('Não renovada','Fechado','Finalizado') AND end >= ? AND end <= ?))
+               WHERE seller=? AND (
+                   status IN ('Renovar', 'Renovação solicitada')
+                   OR (
+                       status NOT IN ('Não renovada','Fechado','Finalizado')
+                       AND end IS NOT NULL
+                       AND end >= ? AND end <= ?
+                   )
+               )
                ORDER BY end ASC LIMIT 200""",
-            (u['username'], month_start, month_end)
+            (u['username'], due_window_start, due_window_end)
         )
         not_renewed = db_all(
             "SELECT * FROM policies WHERE seller=? AND status='Não renovada' ORDER BY end DESC LIMIT 200",
@@ -855,6 +1012,7 @@ def api_renovacoes():
 @app.get('/api/apolices')
 @auth_required
 def api_apolices():
+    u = g.user
     search = request.args.get('search', '').strip().lower()
     if search:
         q = f"%{search}%"
@@ -867,15 +1025,24 @@ def api_apolices():
         )
     else:
         rows = db_all("SELECT * FROM policies ORDER BY id DESC LIMIT 200")
+
+    if u['role'] == 'vendedor':
+        rows = filter_policies_for_user(u, rows)
+    elif u['role'] == 'sinistro':
+        if not search:
+            rows = []
     return jsonify(rows)
 
 
 @app.get('/api/apolices/<int:pid>')
 @auth_required
 def api_apolice_details(pid):
+    u = g.user
     policy = db_get('SELECT * FROM policies WHERE id=?', (pid,))
     if not policy:
         return jsonify(message='Apólice não encontrada.'), 404
+    if not is_allowed_policy_access(u, policy):
+        return jsonify(message='Acesso negado.'), 403
     return jsonify(policy)
 
 
@@ -889,6 +1056,8 @@ def api_policy_status(pid):
     policy = db_get('SELECT * FROM policies WHERE id=?', (pid,))
     if not policy:
         return jsonify(message='Apólice não encontrada.'), 404
+    if u['role'] == 'vendedor' and policy.get('seller') != u['username']:
+        return jsonify(message='Acesso negado.'), 403
 
     data = request.json or {}
     status = str(data.get('status', '')).strip()
@@ -897,6 +1066,7 @@ def api_policy_status(pid):
         return jsonify(message='Status inválido.'), 400
 
     notes = str(data.get('notes', policy.get('notes') or '')).strip()
+    return_reason = str(data.get('returnReason', policy.get('returnReason') or notes or '')).strip()
     if status == 'Renovação solicitada':
         phone = str(data.get('phone', policy.get('phone') or '')).strip()
         end_date = str(data.get('end', policy.get('end') or '')).strip()
@@ -904,16 +1074,16 @@ def api_policy_status(pid):
             return jsonify(message='Informe telefone para a renovação.'), 400
         if not end_date:
             return jsonify(message='Informe a final de vigência para a renovação.'), 400
-        db_run('UPDATE policies SET status=?, phone=?, end=? WHERE id=?', (status, phone, end_date, pid))
+        db_run('UPDATE policies SET status=?, phone=?, end=?, returnReason=?, notes=? WHERE id=?', (status, phone, end_date, '', notes, pid))
     elif status == 'Não renovada':
-        if not notes:
+        if not return_reason:
             return jsonify(message='Informe o motivo para não renovada.'), 400
-        db_run('UPDATE policies SET status=?, notes=? WHERE id=?', (status, notes, pid))
+        db_run('UPDATE policies SET status=?, notes=?, returnReason=? WHERE id=?', (status, notes or return_reason, return_reason, pid))
     else:
         if notes:
-            db_run('UPDATE policies SET status=?, notes=? WHERE id=?', (status, notes, pid))
+            db_run('UPDATE policies SET status=?, notes=?, returnReason=? WHERE id=?', (status, notes, return_reason or '', pid))
         else:
-            db_run('UPDATE policies SET status=? WHERE id=?', (status, pid))
+            db_run('UPDATE policies SET status=?, returnReason=? WHERE id=?', (status, return_reason or '', pid))
 
     updated = db_get('SELECT * FROM policies WHERE id=?', (pid,))
     print(f"[INFO] Apólice {pid} atualizada para status {status} por {u['username']}")
@@ -972,6 +1142,8 @@ def api_policy_upload(pid):
     policy = db_get("SELECT * FROM policies WHERE id=?", (pid,))
     if not policy:
         return jsonify(message='Apólice não encontrada.'), 404
+    if u['role'] == 'vendedor' and policy.get('seller') != u['username']:
+        return jsonify(message='Acesso negado.'), 403
 
     pdf_file = request.files.get('pdf')
     if not pdf_file or not pdf_file.filename:
@@ -988,6 +1160,8 @@ def api_policy_upload(pid):
             return jsonify(message='Informe telefone para a renovação.'), 400
         if not end_date:
             return jsonify(message='Informe a final de vigência para a renovação.'), 400
+        if u['role'] == 'vendedor':
+            return jsonify(message='Vendedor não pode reatribuir apólice nem alterar o vendedor no upload.'), 403
         if not seller:
             return jsonify(message='Informe o vendedor para enviar a renovação.'), 400
         seller_user = db_get("SELECT username FROM users WHERE username=? AND role='vendedor'", (seller,))
@@ -1049,14 +1223,14 @@ def api_create_renewal():
         return jsonify(message='Vendedor inválido.'), 400
 
     try:
-        pdf_filename, pdf_original = save_pdf_upload(pdf_file, POLICIES_UPLOAD, f'ren{int(datetime.utcnow().timestamp())}')
+        pdf_filename, pdf_original = save_pdf_upload(pdf_file, POLICIES_UPLOAD, f'ren{int(datetime.now(timezone.utc).timestamp())}')
     except ValueError as e:
         return jsonify(message=str(e)), 400
 
     # Gerar número temporário único
     import time
     number = f"REN-{int(time.time())}"
-    start = datetime.utcnow().strftime('%Y-%m-%d')
+    start = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     premium = 0
 
     pid = db_run(
@@ -1078,9 +1252,12 @@ def api_vendedores():
 @app.get('/api/apolices/<int:pid>/pdf')
 @auth_required
 def api_policy_pdf(pid):
+    u = g.user
     policy = db_get("SELECT * FROM policies WHERE id=?", (pid,))
     if not policy:
         return jsonify(message='Apolice nao encontrada.'), 404
+    if not is_allowed_policy_access(u, policy):
+        return jsonify(message='Acesso negado.'), 403
 
     if policy.get('pdfFilename'):
         return send_from_directory(
@@ -1117,6 +1294,11 @@ def api_policy_pdf(pid):
 @app.get('/api/sinistros')
 @auth_required
 def api_sinistros_get():
+    u = g.user
+    if u['role'] not in ('gestor', 'sinistro', 'vendedor'):
+        return jsonify(message='Acesso negado.'), 403
+    if u['role'] == 'emissao':
+        return jsonify(message='Acesso negado.'), 403
     # Parâmetro opcional para filtrar finalizados
     show_finalized = request.args.get('finalized', 'false').lower() == 'true'
     
@@ -1124,6 +1306,9 @@ def api_sinistros_get():
         rows = db_all("SELECT * FROM sinistros WHERE isFinalizado=1 ORDER BY finalizadoAt DESC LIMIT 200")
     else:
         rows = db_all("SELECT * FROM sinistros WHERE isFinalizado=0 ORDER BY id DESC LIMIT 200")
+
+    if u['role'] == 'vendedor':
+        rows = filter_sinistros_for_user(u, rows)
     
     return jsonify(rows)
 
@@ -1149,7 +1334,10 @@ def api_sinistros_post():
     veiculo_modelo = str(data.get('veiculoModelo', '')).strip()
     veiculo_placa = str(data.get('veiculoPlaca', '')).strip()
     tipo_envolvido = str(data.get('tipoEnvolvido', 'segurado')).strip()
-    status = str(data.get('status', 'Em andamento')).strip()
+    raw_status = data.get('status', 'Em andamento')
+    status = validate_sinistro_status(raw_status)
+    if status is None:
+        return jsonify(message='Status inválido para sinistro.'), 400
     is_terceiro = tipo_envolvido == 'terceiro'
 
     if is_terceiro:
@@ -1161,14 +1349,16 @@ def api_sinistros_post():
     else:
         if not policy_number or not client or not insurer or not stype:
             return jsonify(message='Dados inválidos.'), 400
+        if not db_get("SELECT 1 FROM policies WHERE number=?", (policy_number,)):
+            return jsonify(message='A apólice informada não existe no cadastro.'), 400
 
     # Buscar o vendedor da apólice
     policy = db_get("SELECT seller FROM policies WHERE number=?", (policy_number,)) if not is_terceiro else None
     seller = policy['seller'] if policy else (u['username'] if is_terceiro else 'N/A')
 
     import random
-    opened_at = datetime.utcnow().strftime('%Y-%m-%d')
-    protocol = f"{insurer[:3].upper()}-{datetime.utcnow().year}-{10000 + random.randint(0,89999)}"
+    opened_at = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    protocol = f"{insurer[:3].upper()}-{datetime.now(timezone.utc).year}-{10000 + random.randint(0,89999)}"
 
     sid = db_run(
         "INSERT INTO sinistros (policyNumber,client,cpf,insurer,type,status,openedAt,protocol,description,sinistroDate,avisoDate,oficina,seller,numeroSinistro,veiculoModelo,veiculoPlaca,tipoEnvolvido,isFinalizado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -1187,7 +1377,13 @@ def api_sinistros_post():
 @app.get('/api/chart/sinistros')
 @auth_required
 def api_chart():
-    rows = db_all("SELECT openedAt FROM sinistros ORDER BY openedAt DESC LIMIT 365")
+    u = g.user
+    if u['role'] not in ('gestor', 'sinistro', 'vendedor'):
+        return jsonify(message='Acesso negado.'), 403
+
+    rows = db_all("SELECT openedAt, seller FROM sinistros ORDER BY openedAt DESC LIMIT 365")
+    if u['role'] == 'vendedor':
+        rows = [r for r in rows if str(r.get('seller') or '') == u['username']]
     counts = {}
     for r in rows:
         month = r['openedAt'][:7]
@@ -1201,10 +1397,15 @@ def api_chart():
 @auth_required
 def api_sinistro_details(sid):
     """Retorna detalhes completos do sinistro incluindo histórico e anexos"""
+    u = g.user
+    if u['role'] not in ('gestor', 'sinistro', 'vendedor'):
+        return jsonify(message='Acesso negado.'), 403
     sinistro = db_get("SELECT * FROM sinistros WHERE id=?", (sid,))
     if not sinistro:
         return jsonify(message='Sinistro não encontrado.'), 404
-    
+    if u['role'] == 'vendedor' and str(sinistro.get('seller') or '') != u['username']:
+        return jsonify(message='Acesso negado.'), 403
+
     history = db_all(
         "SELECT * FROM sinistro_history WHERE sinistro_id=? ORDER BY date DESC",
         (sid,)
@@ -1274,7 +1475,7 @@ def api_update_sinistro(sid):
     )
     db_run(
         "INSERT INTO sinistro_history (sinistro_id,date,event,actor) VALUES (?,?,?,?)",
-        (sid, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), 'Dados do sinistro editados', u['name'])
+        (sid, datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'), 'Dados do sinistro editados', u['name'])
     )
     return jsonify(db_get("SELECT * FROM sinistros WHERE id=?", (sid,)))
 
@@ -1316,7 +1517,7 @@ def api_add_history(sid):
     if not event:
         return jsonify(message='Evento não pode estar vazio.'), 400
     
-    event_date = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    event_date = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     
     hid = db_run(
         "INSERT INTO sinistro_history (sinistro_id,date,event,actor) VALUES (?,?,?,?)",
@@ -1359,7 +1560,7 @@ def api_add_attachment(sid):
     
     file.save(file_path)
     
-    uploaded_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    uploaded_at = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     
     aid = db_run(
         "INSERT INTO sinistro_attachments (sinistro_id,filename,originalName,fileType,uploadedAt,uploadedBy) VALUES (?,?,?,?,?,?)",
@@ -1379,6 +1580,10 @@ def api_add_attachment(sid):
 @auth_required
 def api_download_attachment(sid, aid):
     """Faz download de um anexo"""
+    u = g.user
+    if u['role'] not in ('gestor', 'sinistro', 'vendedor'):
+        return jsonify(message='Acesso negado.'), 403
+
     attachment = db_get(
         "SELECT * FROM sinistro_attachments WHERE id=? AND sinistro_id=?",
         (aid, sid)
@@ -1386,6 +1591,11 @@ def api_download_attachment(sid, aid):
     
     if not attachment:
         return jsonify(message='Anexo não encontrado.'), 404
+
+    if u['role'] == 'vendedor':
+        sinistro = db_get("SELECT * FROM sinistros WHERE id=?", (sid,))
+        if not sinistro or str(sinistro.get('seller') or '') != u['username']:
+            return jsonify(message='Acesso negado.'), 403
     
     upload_folder = os.path.join(os.path.dirname(__file__), 'uploads', 'sinistros')
     return send_from_directory(upload_folder, attachment['filename'], as_attachment=True, download_name=attachment['originalName'])
@@ -1404,15 +1614,20 @@ def api_update_status(sid):
         return jsonify(message='Sinistro não encontrado.'), 404
     
     data = request.json or {}
-    new_status = str(data.get('status', '')).strip()
-    
+    new_status = validate_sinistro_status(data.get('status', ''))
+
     if not new_status:
-        return jsonify(message='Status não pode estar vazio.'), 400
-    
+        return jsonify(message='Status inválido ou não permitido para este fluxo.'), 400
+
+    if sinistro['isFinalizado'] and new_status != 'Finalizado':
+        return jsonify(message='Sinistro finalizado não pode retornar para outro status.'), 400
+
     db_run("UPDATE sinistros SET status=? WHERE id=?", (new_status, sid))
+    if new_status == 'Finalizado':
+        db_run("UPDATE sinistros SET isFinalizado=1, finalizadoAt=?, finalizadoBy=? WHERE id=?", (datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'), u['name'], sid))
     
     # Adicionar ao histórico
-    event_date = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    event_date = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     db_run(
         "INSERT INTO sinistro_history (sinistro_id,date,event,actor) VALUES (?,?,?,?)",
         (sid, event_date, f'Status alterado para: {new_status}', u['name'])
@@ -1438,7 +1653,7 @@ def api_finalizar_sinistro(sid):
     if sinistro['isFinalizado']:
         return jsonify(message='Sinistro já está finalizado.'), 400
     
-    finalized_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    finalized_at = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     
     db_run(
         "UPDATE sinistros SET isFinalizado=1, status='Finalizado', finalizadoAt=?, finalizadoBy=? WHERE id=?",

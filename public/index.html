@@ -303,8 +303,8 @@
         <div class="card" style="margin-bottom:24px;">
           <div class="card-body" style="padding:16px 20px;">
             <div style="display:flex;gap:10px;align-items:center;">
-              <input id="apoliceSearch" class="field" style="flex:1;margin:0;border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:14px;background:var(--surface);color:var(--text-primary);" placeholder="Nome do cliente, CPF ou número da apólice..." oninput="searchPolicies()">
-              <button class="btn secondary" onclick="clearPolicySearch()">Limpar</button>
+              <input id="apoliceSearch" class="field" aria-label="Buscar apólices" type="search" style="flex:1;margin:0;border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:14px;background:var(--surface);color:var(--text-primary);" placeholder="Nome do cliente, CPF ou número da apólice..." oninput="searchPolicies()">
+              <button class="btn secondary" type="button" aria-label="Limpar busca de apólices" title="Limpar busca" onclick="clearPolicySearch()">Limpar</button>
             </div>
           </div>
         </div>
@@ -346,8 +346,8 @@
           <div class="card-header"><div class="card-title">Buscar apólices</div></div>
           <div class="card-body" style="padding-bottom:12px;">
             <div style="display:flex;gap:10px;align-items:center;">
-              <input id="emissaoApoliceSearch" class="field" style="flex:1;margin:0;border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:14px;background:var(--surface);color:var(--text-primary);" placeholder="Nome do cliente, CPF ou número da apólice..." oninput="searchEmissaoApolices()">
-              <button class="btn secondary" onclick="clearEmissaoApoliceSearch()">Limpar</button>
+              <input id="emissaoApoliceSearch" class="field" aria-label="Buscar apólices para emissão" type="search" style="flex:1;margin:0;border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:14px;background:var(--surface);color:var(--text-primary);" placeholder="Nome do cliente, CPF ou número da apólice..." oninput="searchEmissaoApolices()">
+              <button class="btn secondary" type="button" aria-label="Limpar busca de apólices da emissão" title="Limpar busca" onclick="clearEmissaoApoliceSearch()">Limpar</button>
             </div>
           </div>
           <div class="table-wrap">

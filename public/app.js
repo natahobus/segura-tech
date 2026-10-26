@@ -47,7 +47,6 @@ async function initApp() {
 // Navegação entre telas
 function showScreen(name, topbarBtn, sidebarItem) {
   if (currentRole && !allowedRoles().includes(name)) {
-    showErrorNotification('Acesso negado a esta seção.');
     return;
   }
   
@@ -91,6 +90,11 @@ function updateRoleAccess() {
 }
 
 // API e utilitários
+function isAccessDeniedError(error) {
+  if (!error) return false;
+  return error.status === 403 || /acesso negado|forbidden/i.test(String(error.message || ''));
+}
+
 async function apiFetch(path, options = {}) {
   const headers = {};
   const isFormData = options.body instanceof FormData;
@@ -108,6 +112,11 @@ async function apiFetch(path, options = {}) {
       if (response.status === 401) {
         localStorage.removeItem('seguraTechToken');
         window.location.href = '/';
+      }
+      if (response.status === 403) {
+        const accessDenied = new Error(body.message || 'Acesso negado.');
+        accessDenied.status = 403;
+        throw accessDenied;
       }
       throw new Error(body.message || `Erro ${response.status}`);
     }
@@ -133,45 +142,61 @@ async function apiFetchBlob(path) {
   return response;
 }
 
-function showErrorNotification(message) {
+function showToast(message, type = 'info') {
+  let toastStack = document.getElementById('seguraTechToastStack');
+  if (!toastStack) {
+    toastStack = document.createElement('div');
+    toastStack.id = 'seguraTechToastStack';
+    toastStack.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+    toastStack.setAttribute('aria-atomic', 'true');
+    document.body.appendChild(toastStack);
+  }
+
   const el = document.createElement('div');
-  el.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background: #C0392B;
-    color: white;
-    padding: 16px 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    font-size: 14px;
-    z-index: 9999;
-    animation: slideIn 0.3s ease;
-  `;
+  el.className = 'segura-tech-toast';
+  el.setAttribute('role', 'status');
+  el.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+  el.setAttribute('aria-atomic', 'true');
+  const accentMap = {
+    error: '#b7b9c6',
+    success: '#8aa1ff',
+    info: '#8aa1ff'
+  };
+  el.style.setProperty('--toast-accent', accentMap[type] || accentMap.info);
   el.textContent = message;
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 4000);
+  toastStack.appendChild(el);
+
+  setTimeout(() => {
+    el.remove();
+    if (!toastStack.childElementCount) {
+      toastStack.remove();
+    }
+  }, type === 'error' ? 3500 : 2800);
+}
+
+function showErrorNotification(message) {
+  showToast(message, 'error');
 }
 
 function showSuccessNotification(message) {
-  const el = document.createElement('div');
-  el.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background: #22863A;
-    color: white;
-    padding: 16px 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    font-size: 14px;
-    z-index: 9999;
-    animation: slideIn 0.3s ease;
-  `;
-  el.textContent = message;
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 3000);
+  showToast(message, 'success');
 }
+
+document.addEventListener('keydown', (event) => {
+  const active = document.activeElement;
+  if (!active || !('value' in active)) return;
+  if (event.key !== 'Escape') return;
+
+  if (active.id === 'apoliceSearch') {
+    active.value = '';
+    clearPolicySearch();
+  }
+
+  if (active.id === 'emissaoApoliceSearch') {
+    active.value = '';
+    clearEmissaoApoliceSearch();
+  }
+});
 
 function setLoadingState(element, isLoading) {
   if (!element) return;
@@ -1237,6 +1262,7 @@ async function loadSinistros(showFinalized = false) {
       `).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Nenhum sinistro de terceiro encontrado.</td></tr>';
     }
   } catch (error) {
+    if (isAccessDeniedError(error)) return;
     console.warn('Sinistros load failed:', error);
   }
 }
@@ -1271,6 +1297,7 @@ async function loadSinistroChart() {
       </div>
     `).join('');
   } catch (error) {
+    if (isAccessDeniedError(error)) return;
     console.warn('Chart load failed:', error);
   }
 }
@@ -1307,6 +1334,7 @@ async function searchPolicies() {
       const policies = await apiFetch(`/apolices?search=${encodeURIComponent(query)}`);
       renderPolicyTable(policies || []);
     } catch (error) {
+      if (isAccessDeniedError(error)) return;
       showErrorNotification('Erro ao buscar apólices');
     }
   }, 300);
@@ -1333,6 +1361,7 @@ async function searchEmissaoApolices() {
       const policies = await apiFetch(`/apolices?search=${encodeURIComponent(query)}`);
       renderEmissaoApolicesTable(policies || []);
     } catch (error) {
+      if (isAccessDeniedError(error)) return;
       showErrorNotification('Erro ao buscar apólices.');
     }
   }, 300);
@@ -1766,7 +1795,7 @@ function renderThemeToggle(isDark) {
 }
 
 function loadTheme() {
-  const theme = localStorage.getItem('seguraTechTheme') || 'light';
+  const theme = localStorage.getItem('seguraTechTheme') || 'dark';
   document.body.classList.toggle('dark', theme === 'dark');
   renderThemeToggle(theme === 'dark');
 }

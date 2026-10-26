@@ -167,6 +167,36 @@ seguratech/
 └── .gitignore
 ```
 
+## ✅ Etapa atual validada
+
+A aplicação já está com a base funcional validada em execução local:
+
+- Login com visual em fundo preto e interface mais limpa
+- Atalhos por perfil (`v`, `e`, `s`, `g`) preenchendo usuário e senha sem automatizar o envio
+- Mensagens de erro/êxito mais discretas, sem o flash vermelho agressivo
+- Controle de acesso por perfil validado no backend
+- Bloqueio de login por excesso de tentativas inválidas
+- Validação de status de sinistro e regra de acesso por papel
+- Busca de apólices funcionando via rota de consulta, inclusive para emissões
+
+### Verificação executada
+
+A validação foi feita diretamente contra `http://localhost:3000` usando requisições reais à API:
+
+- perfil `vendedor` em `/api/sinistros` → `200`
+- perfil `emissao` em `/api/sinistros` → `403`
+- perfil `sinistro` em `/api/sinistros` → `200`
+- perfil `gestor` em `/api/sinistros` → `200`
+- tentativas inválidas 1 a 4 → `401`
+- tentativas inválidas 5 e 6 → `429`
+- status inválido em sinistro → `400`
+- regressão final do backend e regras de negócio → `OK`
+
+```bash
+cd segura-tech
+python scripts/test_permissoes.py
+```
+
 ## 🚀 Como executar localmente
 
 **Pré-requisitos:** Python 3.7+
@@ -176,10 +206,13 @@ seguratech/
 git clone https://github.com/natahobus/segura-tech.git
 cd segura-tech
 
-# 2. Instale as dependências
+# 2. Crie o arquivo local de ambiente a partir do exemplo
+copy .env.example .env
+
+# 3. Instale as dependências
 pip install flask flask-cors
 
-# 3. Rode o servidor
+# 4. Rode o servidor
 python server.py
 ```
 
@@ -188,6 +221,8 @@ Depois, abra no navegador:
 ```
 http://localhost:3000
 ```
+
+> O arquivo `.env.example` contém os parâmetros esperados de ambiente e evita expor segredos no repositório.
 
 ### Teste rápido por perfil
 
