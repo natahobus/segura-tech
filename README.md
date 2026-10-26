@@ -277,4 +277,4 @@ Este é um **protótipo funcional** desenvolvido como parte do Projeto de Desenv
 
 ## 📄 Licença
 
-Projeto acadêmico desenvolvido para a disciplina de Projeto de Desenvolvimento I — UniSenac.
+Projeto acadêmico desenvolvido para a disciplina de Projeto de Desenvolvimento— UniSenac.
