@@ -2,10 +2,10 @@
 
 **Sistema interno de gestão para corretoras de seguros**
 
-> Projeto de Desenvolvimento I — UniSenac | Centro Universitário RS
+> Projeto de Desenvolvimento — UniSenac | Centro Universitário RS
 > Campus Pelotas · Fecomércio · IFEP · Sesc · Sindicatos Empresariais
 >
-> **Autores:** Natã Hobus Kuhn, Eduarda Prasdio
+> **Autores:** Natã Hobus Kuhn, Gabriel Reboredo
 > **Orientação:** Profª. Me. Bruna Ribeiro, Prof. Me. Gladimir Catarino
 
 ---
