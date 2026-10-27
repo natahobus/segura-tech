@@ -64,6 +64,22 @@ def request_json(method: str, path: str, token: str | None = None, payload: Dict
         return exc.code, {}
 
 
+def upload(path, token, filename, content, document_type):
+    boundary = '----seguratech' + str(int(time.time() * 1000))
+    parts = []
+    parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="documentType"\r\n\r\n{document_type}\r\n'.encode())
+    parts.append((f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+                  'Content-Type: application/octet-stream\r\n\r\n').encode() + content + b'\r\n')
+    parts.append(f'--{boundary}--\r\n'.encode())
+    req = urllib.request.Request(BASE_URL.rstrip('/') + path, data=b''.join(parts), method='POST', headers={
+        'Content-Type': f'multipart/form-data; boundary={boundary}', 'x-auth-token': token})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read()
+
+
 def login(username: str, password: str) -> str:
     status, resp = request_json('POST', '/api/login', payload={'username': username, 'password': password})
     if status != 200:
@@ -222,6 +238,116 @@ def main() -> None:
     pending = renovacoes.get('pending', [])
     if not isinstance(pending, list):
         raise AssertionError(f'Esperava lista de pendentes em /api/renovacoes; recebeu {pending!r}')
+
+    # ETAPA B: fluxo do vendedor -> agente -> comunicação à seguradora
+    tv, ta, te = tokens['vendedor'], tokens['sinistro'], tokens['emissao']
+
+    def expect(label, got, want):
+        if got != want:
+            raise AssertionError(f'{label}: esperado {want}, recebido {got}')
+
+    # vendedor não consegue forçar status/origem: o servidor decide
+    status, resp = request_json('POST', '/api/sinistros', token=tv, payload={
+        'policyNumber': '0009821-4', 'client': 'Cliente vendedor teste', 'cpf': '111.222.333-44',
+        'insurer': 'Porto Seguro', 'type': 'Automóvel',
+        'status': 'Em andamento', 'origem': 'sinistro',
+        'observacoesVendedor': 'Cliente enviou documentação por WhatsApp.',
+    })
+    expect('vendedor cria rascunho', status, 201)
+    expect('status forçado em Rascunho', resp.get('status'), 'Rascunho')
+    expect('origem forçada em vendedor', resp.get('origem'), 'vendedor')
+    claim_id = resp['id']
+
+    status, resp = request_json('POST', '/api/sinistros', token=tv, payload={'policyNumber': 'NAO-EXISTE', 'client': 'X', 'cpf': '1'})
+    expect('vendedor com apólice inexistente', status, 400)
+
+    # agente NÃO enxerga rascunho
+    status, lista = request_json('GET', '/api/sinistros', token=ta)
+    expect('agente lista', status, 200)
+    if any(item.get('id') == claim_id for item in lista):
+        raise AssertionError('Agente enxergou rascunho do vendedor na lista')
+    status, _ = request_json('GET', f'/api/sinistros/{claim_id}', token=ta)
+    expect('agente GET rascunho', status, 404)
+    status, _ = request_json('POST', f'/api/sinistros/{claim_id}/assumir', token=ta, payload={})
+    expect('agente assume rascunho', status, 400)
+
+    # enviar exige campos e anexo
+    status, _ = request_json('POST', f'/api/sinistros/{claim_id}/enviar', token=tv, payload={})
+    expect('enviar sem descrição/data', status, 400)
+    status, _ = request_json('PUT', f'/api/sinistros/{claim_id}', token=tv, payload={
+        'client': 'Cliente vendedor teste', 'cpf': '111.222.333-44',
+        'description': 'Colisão traseira no cruzamento.', 'sinistroDate': '2026-10-20'})
+    expect('vendedor edita rascunho', status, 200)
+    status, _ = request_json('POST', f'/api/sinistros/{claim_id}/enviar', token=tv, payload={})
+    expect('enviar sem anexo', status, 400)
+
+    status, _ = upload(f'/api/sinistros/{claim_id}/attachments', tv, 'virus.exe', b'MZ....', 'BO')
+    expect('upload .exe', status, 400)
+    status, _ = upload(f'/api/sinistros/{claim_id}/attachments', tv, 'bo.pdf', b'%PDF-1.4 teste', 'BO')
+    expect('upload pdf', status, 201)
+
+    status, resp = request_json('POST', f'/api/sinistros/{claim_id}/enviar', token=tv, payload={})
+    expect('vendedor envia', status, 200)
+    expect('status após envio', resp.get('status'), 'Aguardando agente')
+    status, _ = request_json('POST', f'/api/sinistros/{claim_id}/enviar', token=tv, payload={})
+    expect('reenviar já enviado', status, 400)
+
+    # depois de enviado, vendedor não edita nem anexa nem muda status
+    status, _ = request_json('PUT', f'/api/sinistros/{claim_id}', token=tv, payload={'client': 'Outro nome'})
+    expect('vendedor edita após envio', status, 403)
+    status, _ = upload(f'/api/sinistros/{claim_id}/attachments', tv, 'b.pdf', b'%PDF-1.4 x', 'Outros')
+    expect('vendedor anexa após envio', status, 403)
+    status, _ = request_json('PUT', f'/api/sinistros/{claim_id}/status', token=tv, payload={'status': 'Finalizado'})
+    expect('vendedor muda status', status, 403)
+    status, _ = request_json('POST', f'/api/sinistros/{claim_id}/comunicar', token=tv, payload={'numeroSinistro': 'X'})
+    expect('vendedor comunica', status, 403)
+    status, _ = request_json('POST', f'/api/sinistros/{claim_id}/enviar', token=te, payload={})
+    expect('emissao enviar', status, 403)
+
+    # agente vê, precisa assumir antes de comunicar
+    status, _ = request_json('GET', f'/api/sinistros/{claim_id}', token=ta)
+    expect('agente vê enviado', status, 200)
+    status, _ = request_json('POST', f'/api/sinistros/{claim_id}/comunicar', token=ta, payload={'numeroSinistro': 'SIN-1'})
+    expect('comunicar sem assumir', status, 400)
+    status, resp = request_json('POST', f'/api/sinistros/{claim_id}/assumir', token=ta, payload={})
+    expect('assumir', status, 200)
+    expect('assumidoPor', resp.get('assumidoPor'), 'sinistro')
+    status, _ = request_json('POST', f'/api/sinistros/{claim_id}/assumir', token=ta, payload={})
+    expect('assumir duas vezes', status, 400)
+
+    # pendência devolve ao vendedor, que corrige e reenvia
+    status, _ = request_json('POST', f'/api/sinistros/{claim_id}/pendencia', token=ta, payload={})
+    expect('pendência sem motivo', status, 400)
+    status, resp = request_json('POST', f'/api/sinistros/{claim_id}/pendencia', token=ta, payload={'motivo': 'Falta CNH'})
+    expect('pendência', status, 200)
+    expect('status pendência', resp.get('status'), 'Aguardando documentos')
+    status, _ = upload(f'/api/sinistros/{claim_id}/attachments', tv, 'cnh.pdf', b'%PDF-1.4 cnh', 'CNH')
+    expect('vendedor anexa na pendência', status, 201)
+    status, resp = request_json('POST', f'/api/sinistros/{claim_id}/enviar', token=tv, payload={})
+    expect('vendedor reenvia', status, 200)
+    status, _ = request_json('POST', f'/api/sinistros/{claim_id}/assumir', token=ta, payload={})
+    expect('assumir de novo', status, 200)
+
+    # comunicar exige número, e só uma vez
+    status, _ = request_json('POST', f'/api/sinistros/{claim_id}/comunicar', token=ta, payload={})
+    expect('comunicar sem número', status, 400)
+    status, resp = request_json('POST', f'/api/sinistros/{claim_id}/comunicar', token=ta, payload={'numeroSinistro': 'SIN-2026-99999'})
+    expect('comunicar', status, 200)
+    expect('status comunicado', resp.get('status'), 'Comunicado à seguradora')
+    expect('numeroSinistro', resp.get('numeroSinistro'), 'SIN-2026-99999')
+    status, _ = request_json('POST', f'/api/sinistros/{claim_id}/comunicar', token=ta, payload={'numeroSinistro': 'SIN-2'})
+    expect('comunicar duas vezes', status, 400)
+    status, _ = request_json('PUT', f'/api/sinistros/{claim_id}/status', token=ta, payload={'status': 'Comunicado à seguradora'})
+    expect('status manual comunicado', status, 400)
+
+    # agente abre do zero (sem passar pelo vendedor)
+    status, _ = request_json('POST', '/api/sinistros', token=ta, payload={
+        'policyNumber': '0009821-4', 'client': 'Cliente direto', 'insurer': 'Porto Seguro', 'type': 'Automóvel', 'status': 'Rascunho'})
+    expect('agente cria como rascunho', status, 400)
+    status, resp = request_json('POST', '/api/sinistros', token=ta, payload={
+        'policyNumber': '0009821-4', 'client': 'Cliente direto', 'insurer': 'Porto Seguro', 'type': 'Automóvel', 'origem': 'vendedor'})
+    expect('agente abre do zero', status, 201)
+    expect('origem do agente', resp.get('origem'), 'sinistro')
 
     print('OK: permissões por perfil, segurança e regras de negócio conferem com os critérios esperados.')
 

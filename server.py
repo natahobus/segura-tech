@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, request, jsonify, send_from_directory, g, Response
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 
 # Carrega .env manualmente (sem dependência de python-dotenv)
 # OPENROUTER_API_KEY e OPENROUTER_MODEL sempre prevalecem sobre variáveis do sistema
@@ -30,6 +31,7 @@ if os.path.exists(_env_path):
                     os.environ.setdefault(_k, _v)
 
 app = Flask(__name__, static_folder='public', static_url_path='')
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 CORS(app)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'database.sqlite')
@@ -203,6 +205,14 @@ def init_db():
             veiculoModelo TEXT,
             veiculoPlaca TEXT,
             tipoEnvolvido TEXT DEFAULT 'segurado',
+            origem TEXT DEFAULT 'sinistro',
+            criadoPor TEXT,
+            enviadoAt TEXT,
+            assumidoPor TEXT,
+            assumidoAt TEXT,
+            motivoPendencia TEXT,
+            observacoesVendedor TEXT,
+            comunicadoAt TEXT,
             isFinalizado INTEGER DEFAULT 0,
             finalizadoAt TEXT,
             finalizadoBy TEXT
@@ -245,6 +255,14 @@ def init_db():
         'veiculoModelo': "TEXT",
         'veiculoPlaca': "TEXT",
         'tipoEnvolvido': "TEXT DEFAULT 'segurado'",
+        'origem': "TEXT DEFAULT 'sinistro'",
+        'criadoPor': "TEXT",
+        'enviadoAt': "TEXT",
+        'assumidoPor': "TEXT",
+        'assumidoAt': "TEXT",
+        'motivoPendencia': "TEXT",
+        'observacoesVendedor': "TEXT",
+        'comunicadoAt': "TEXT",
         'isFinalizado': "INTEGER DEFAULT 0",
         'finalizadoAt': "TEXT",
         'finalizadoBy': "TEXT",
@@ -444,12 +462,36 @@ def filter_policies_for_user(user, policies):
     return []
 
 
+VENDEDOR_EDITABLE_STATUS = ('Rascunho', 'Aguardando documentos')
+MANUAL_BLOCKED_STATUS = ('Rascunho', 'Aguardando agente', 'Comunicado à seguradora')
+
+
+def is_hidden_draft(sinistro):
+    """Rascunho do vendedor ainda não enviado: o agente de sinistro não enxerga."""
+    return (str(sinistro.get('status') or '') == 'Rascunho'
+            and str(sinistro.get('origem') or '') == 'vendedor')
+
+
 def filter_sinistros_for_user(user, sinistros):
-    if user['role'] in ('gestor', 'sinistro'):
+    if user['role'] == 'gestor':
         return sinistros
+    if user['role'] == 'sinistro':
+        return [s for s in sinistros if not is_hidden_draft(s)]
     if user['role'] == 'vendedor':
         return [s for s in sinistros if str(s.get('seller') or '') == user['username']]
     return []
+
+
+def sinistro_access_ok(user, sinistro):
+    if not sinistro:
+        return False
+    if user['role'] == 'gestor':
+        return True
+    if user['role'] == 'sinistro':
+        return not is_hidden_draft(sinistro)
+    if user['role'] == 'vendedor':
+        return str(sinistro.get('seller') or '') == user['username']
+    return False
 
 
 # ─────────────────────────────────────────────
@@ -457,6 +499,8 @@ def filter_sinistros_for_user(user, sinistros):
 # ─────────────────────────────────────────────
 LOGIN_ATTEMPTS = {}
 ALLOWED_SINISTRO_STATUS = {
+    'Rascunho',
+    'Aguardando agente',
     'Em andamento',
     'Aguardando vistoria',
     'Aguardando documentos',
@@ -464,8 +508,11 @@ ALLOWED_SINISTRO_STATUS = {
     'Aguardando peças',
     'Em reparo',
     'Reparo concluído',
+    'Comunicado à seguradora',
     'Finalizado',
 }
+ALLOWED_SINISTRO_ATTACHMENT_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png'}
+MAX_SINISTRO_ATTACHMENTS = 15
 
 
 def get_client_identifier():
@@ -495,6 +542,19 @@ def validate_sinistro_status(status):
     if status not in ALLOWED_SINISTRO_STATUS:
         return None
     return status
+
+
+def generate_sinistro_protocol():
+    now = datetime.now(timezone.utc)
+    year = now.year
+    candidate = f"SIN-{year}-00001"
+    while True:
+        base = db_get("SELECT MAX(id) AS max_id FROM sinistros")
+        max_id = int(base['max_id'] or 0) + 1 if base else 1
+        candidate = f"SIN-{year}-{max_id:05d}"
+        existing = db_get("SELECT 1 FROM sinistros WHERE protocol=?", (candidate,))
+        if not existing:
+            return candidate
 
 
 # ─────────────────────────────────────────────
@@ -1307,9 +1367,8 @@ def api_sinistros_get():
     else:
         rows = db_all("SELECT * FROM sinistros WHERE isFinalizado=0 ORDER BY id DESC LIMIT 200")
 
-    if u['role'] == 'vendedor':
-        rows = filter_sinistros_for_user(u, rows)
-    
+    rows = filter_sinistros_for_user(u, rows)
+
     return jsonify(rows)
 
 
@@ -1317,7 +1376,7 @@ def api_sinistros_get():
 @auth_required
 def api_sinistros_post():
     u = g.user
-    if u['role'] != 'sinistro':
+    if u['role'] not in ('sinistro', 'vendedor'):
         return jsonify(message='Acesso negado.'), 403
 
     data = request.json or {}
@@ -1339,10 +1398,35 @@ def api_sinistros_post():
     if status is None:
         return jsonify(message='Status inválido para sinistro.'), 400
     is_terceiro = tipo_envolvido == 'terceiro'
+    motivo_pendencia = ''
+    if u['role'] == 'vendedor':
+        # O servidor decide origem e status: o vendedor sempre começa em rascunho
+        origem = 'vendedor'
+        status = 'Rascunho'
+        is_terceiro = False
+        numero_sinistro = ''
+        observacoes_vendedor = str(data.get('observacoesVendedor', '')).strip()
+    else:
+        origem = 'sinistro'
+        observacoes_vendedor = ''
+        if status in MANUAL_BLOCKED_STATUS:
+            return jsonify(message='Status não permitido na abertura do sinistro.'), 400
 
-    if is_terceiro:
-        if not client or not numero_sinistro:
-            return jsonify(message='Informe nome e número do sinistro do terceiro.'), 400
+    if u['role'] == 'vendedor':
+        if not client or not cpf:
+            return jsonify(message='Informe nome e CPF do cliente.'), 400
+        if policy_number:
+            policy_row = db_get("SELECT * FROM policies WHERE number=?", (policy_number,))
+            if not policy_row:
+                return jsonify(message='A apólice informada não existe no cadastro.'), 400
+            if str(policy_row.get('seller') or '') != u['username']:
+                return jsonify(message='Você só pode abrir sinistro de sua própria apólice.'), 403
+            insurer = insurer or str(policy_row.get('insurer') or '')
+        insurer = insurer or 'N/A'
+        stype = stype or 'Não informado'
+    elif is_terceiro:
+        if not client:
+            return jsonify(message='Informe o nome do terceiro.'), 400
         policy_number = policy_number or 'TERCEIRO'
         insurer = insurer or 'N/A'
         stype = stype or 'Terceiro'
@@ -1351,18 +1435,25 @@ def api_sinistros_post():
             return jsonify(message='Dados inválidos.'), 400
         if not db_get("SELECT 1 FROM policies WHERE number=?", (policy_number,)):
             return jsonify(message='A apólice informada não existe no cadastro.'), 400
+        if u['role'] == 'vendedor':
+            policy = db_get("SELECT seller FROM policies WHERE number=?", (policy_number,))
+            if not policy or str(policy.get('seller') or '') != u['username']:
+                return jsonify(message='Você só pode abrir sinistro de sua própria apólice.'), 403
 
-    # Buscar o vendedor da apólice
-    policy = db_get("SELECT seller FROM policies WHERE number=?", (policy_number,)) if not is_terceiro else None
-    seller = policy['seller'] if policy else (u['username'] if is_terceiro else 'N/A')
+    policy = db_get("SELECT seller FROM policies WHERE number=?", (policy_number,)) if not is_terceiro and policy_number else None
+    seller = policy['seller'] if policy else (u['username'] if (is_terceiro or u['role'] == 'vendedor') else 'N/A')
 
-    import random
     opened_at = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    protocol = f"{insurer[:3].upper()}-{datetime.now(timezone.utc).year}-{10000 + random.randint(0,89999)}"
+    protocol = generate_sinistro_protocol()
 
     sid = db_run(
-        "INSERT INTO sinistros (policyNumber,client,cpf,insurer,type,status,openedAt,protocol,description,sinistroDate,avisoDate,oficina,seller,numeroSinistro,veiculoModelo,veiculoPlaca,tipoEnvolvido,isFinalizado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (policy_number, client, cpf, insurer, stype, status, opened_at, protocol, description, sinistro_date, aviso_date, oficina, seller, numero_sinistro, veiculo_modelo, veiculo_placa, tipo_envolvido, 0)
+        "INSERT INTO sinistros (policyNumber,client,cpf,insurer,type,status,openedAt,protocol,description,sinistroDate,avisoDate,oficina,seller,numeroSinistro,veiculoModelo,veiculoPlaca,tipoEnvolvido,origem,criadoPor,enviadoAt,assumidoPor,assumidoAt,motivoPendencia,observacoesVendedor,comunicadoAt,isFinalizado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            policy_number, client, cpf, insurer, stype, status, opened_at, protocol, description,
+            sinistro_date, aviso_date, oficina, seller, numero_sinistro, veiculo_modelo, veiculo_placa,
+            tipo_envolvido, origem, u['username'], None, None, None, motivo_pendencia,
+            observacoes_vendedor, None, 0
+        )
     )
     db_run(
         "INSERT INTO sinistro_history (sinistro_id,date,event,actor) VALUES (?,?,?,?)",
@@ -1381,9 +1472,8 @@ def api_chart():
     if u['role'] not in ('gestor', 'sinistro', 'vendedor'):
         return jsonify(message='Acesso negado.'), 403
 
-    rows = db_all("SELECT openedAt, seller FROM sinistros ORDER BY openedAt DESC LIMIT 365")
-    if u['role'] == 'vendedor':
-        rows = [r for r in rows if str(r.get('seller') or '') == u['username']]
+    rows = db_all("SELECT openedAt, seller, status, origem FROM sinistros ORDER BY openedAt DESC LIMIT 365")
+    rows = filter_sinistros_for_user(u, rows)
     counts = {}
     for r in rows:
         month = r['openedAt'][:7]
@@ -1405,6 +1495,8 @@ def api_sinistro_details(sid):
         return jsonify(message='Sinistro não encontrado.'), 404
     if u['role'] == 'vendedor' and str(sinistro.get('seller') or '') != u['username']:
         return jsonify(message='Acesso negado.'), 403
+    if not sinistro_access_ok(u, sinistro):
+        return jsonify(message='Sinistro não encontrado.'), 404
 
     history = db_all(
         "SELECT * FROM sinistro_history WHERE sinistro_id=? ORDER BY date DESC",
@@ -1436,12 +1528,18 @@ def api_sinistro_details(sid):
 def api_update_sinistro(sid):
     """Edita dados principais do sinistro"""
     u = g.user
-    if u['role'] not in ('sinistro', 'gestor'):
+    if u['role'] not in ('sinistro', 'gestor', 'vendedor'):
         return jsonify(message='Acesso negado.'), 403
 
     sinistro = db_get("SELECT * FROM sinistros WHERE id=?", (sid,))
     if not sinistro:
         return jsonify(message='Sinistro não encontrado.'), 404
+    if u['role'] == 'vendedor' and str(sinistro.get('seller') or '') != u['username']:
+        return jsonify(message='Acesso negado.'), 403
+    if not sinistro_access_ok(u, sinistro):
+        return jsonify(message='Sinistro não encontrado.'), 404
+    if u['role'] == 'vendedor' and str(sinistro.get('status') or '') not in VENDEDOR_EDITABLE_STATUS:
+        return jsonify(message='Este sinistro já foi enviado ao agente e não pode mais ser editado.'), 403
 
     data = request.json or {}
     fields = {
@@ -1452,25 +1550,28 @@ def api_update_sinistro(sid):
         'sinistroDate': str(data.get('sinistroDate', sinistro['sinistroDate'] or '')).strip(),
         'avisoDate': str(data.get('avisoDate', sinistro['avisoDate'] or '')).strip(),
         'oficina': str(data.get('oficina', sinistro['oficina'] or '')).strip(),
-        'numeroSinistro': str(data.get('numeroSinistro', sinistro['numeroSinistro'] or '')).strip(),
+        'numeroSinistro': (str(sinistro['numeroSinistro'] or '') if u['role'] == 'vendedor'
+                           else str(data.get('numeroSinistro', sinistro['numeroSinistro'] or '')).strip()),
+        'observacoesVendedor': str(data.get('observacoesVendedor', sinistro.get('observacoesVendedor') or '')).strip(),
         'veiculoModelo': str(data.get('veiculoModelo', sinistro['veiculoModelo'] or '')).strip(),
         'veiculoPlaca': str(data.get('veiculoPlaca', sinistro['veiculoPlaca'] or '')).strip(),
     }
 
-    if not fields['client'] or not fields['numeroSinistro']:
-        return jsonify(message='Informe pelo menos nome e número do sinistro.'), 400
+    if not fields['client']:
+        return jsonify(message='Informe o nome do cliente.'), 400
 
     db_run(
         """
         UPDATE sinistros
         SET client=?, cpf=?, type=?, description=?, sinistroDate=?, avisoDate=?,
-            oficina=?, numeroSinistro=?, veiculoModelo=?, veiculoPlaca=?
+            oficina=?, numeroSinistro=?, veiculoModelo=?, veiculoPlaca=?, observacoesVendedor=?
         WHERE id=?
         """,
         (
             fields['client'], fields['cpf'], fields['type'], fields['description'],
             fields['sinistroDate'], fields['avisoDate'], fields['oficina'],
-            fields['numeroSinistro'], fields['veiculoModelo'], fields['veiculoPlaca'], sid
+            fields['numeroSinistro'], fields['veiculoModelo'], fields['veiculoPlaca'],
+            fields['observacoesVendedor'], sid
         )
     )
     db_run(
@@ -1510,7 +1611,9 @@ def api_add_history(sid):
     sinistro = db_get("SELECT * FROM sinistros WHERE id=?", (sid,))
     if not sinistro:
         return jsonify(message='Sinistro não encontrado.'), 404
-    
+    if not sinistro_access_ok(u, sinistro):
+        return jsonify(message='Sinistro não encontrado.'), 404
+
     data = request.json or {}
     event = str(data.get('event', '')).strip()
     
@@ -1534,45 +1637,67 @@ def api_add_history(sid):
 def api_add_attachment(sid):
     """Adiciona um anexo ao sinistro"""
     u = g.user
-    if u['role'] not in ('sinistro', 'gestor'):
+    if u['role'] not in ('sinistro', 'gestor', 'vendedor'):
         return jsonify(message='Acesso negado.'), 403
-    
+
     sinistro = db_get("SELECT * FROM sinistros WHERE id=?", (sid,))
     if not sinistro:
         return jsonify(message='Sinistro não encontrado.'), 404
-    
+    if u['role'] == 'vendedor' and str(sinistro.get('seller') or '') != u['username']:
+        return jsonify(message='Você só pode anexar documentos do seu próprio sinistro.'), 403
+    if not sinistro_access_ok(u, sinistro):
+        return jsonify(message='Sinistro não encontrado.'), 404
+    if u['role'] == 'vendedor' and str(sinistro.get('status') or '') not in VENDEDOR_EDITABLE_STATUS:
+        return jsonify(message='Este sinistro já foi enviado ao agente; não é possível anexar mais documentos.'), 403
+
     if 'file' not in request.files:
         return jsonify(message='Nenhum arquivo enviado.'), 400
-    
+
     file = request.files['file']
     if file.filename == '':
         return jsonify(message='Nenhum arquivo selecionado.'), 400
-    
-    # Criar pasta de uploads se não existir
+
+    file_count = db_get("SELECT COUNT(*) AS total FROM sinistro_attachments WHERE sinistro_id=?", (sid,))
+    if file_count and file_count['total'] >= MAX_SINISTRO_ATTACHMENTS:
+        return jsonify(message=f'Limite de {MAX_SINISTRO_ATTACHMENTS} anexos por sinistro atingido.'), 400
+
+    original_name = secure_filename(os.path.basename(file.filename))
+    file_extension = os.path.splitext(original_name.lower())[1]
+    if file_extension not in ALLOWED_SINISTRO_ATTACHMENT_EXTENSIONS:
+        return jsonify(message='Formato inválido. Use PDF, JPG, JPEG ou PNG.'), 400
+
+    if file.content_length and file.content_length > app.config['MAX_CONTENT_LENGTH']:
+        return jsonify(message='Arquivo excede 10 MB.'), 400
+
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+    if file_size > app.config['MAX_CONTENT_LENGTH']:
+        return jsonify(message='Arquivo excede 10 MB.'), 400
+
+    document_type = str(request.form.get('documentType', '') or '').strip() or 'Documento'
+
     upload_folder = os.path.join(os.path.dirname(__file__), 'uploads', 'sinistros')
     os.makedirs(upload_folder, exist_ok=True)
-    
-    # Gerar nome único para o arquivo
+
     import time
-    file_extension = os.path.splitext(file.filename)[1]
-    unique_filename = f"{sid}_{int(time.time())}_{secrets.token_hex(8)}{file_extension}"
-    file_path = os.path.join(upload_folder, unique_filename)
-    
+    safe_name = f"{sid}_{int(time.time())}_{secrets.token_hex(8)}{file_extension}"
+    file_path = os.path.join(upload_folder, safe_name)
     file.save(file_path)
-    
+
     uploaded_at = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
-    
+
     aid = db_run(
         "INSERT INTO sinistro_attachments (sinistro_id,filename,originalName,fileType,uploadedAt,uploadedBy) VALUES (?,?,?,?,?,?)",
-        (sid, unique_filename, file.filename, file.content_type, uploaded_at, u['name'])
+        (sid, safe_name, original_name, document_type, uploaded_at, u['name'])
     )
-    
+
     attachment = db_get("SELECT * FROM sinistro_attachments WHERE id=?", (aid,))
     db_run(
         "INSERT INTO sinistro_history (sinistro_id,date,event,actor) VALUES (?,?,?,?)",
-        (sid, uploaded_at, f'Documento anexado: {file.filename}', u['name'])
+        (sid, uploaded_at, f'Documento anexado: {original_name}', u['name'])
     )
-    print(f"[INFO] Anexo adicionado ao sinistro {sid} por {u['username']}: {file.filename}")
+    print(f"[INFO] Anexo adicionado ao sinistro {sid} por {u['username']}: {original_name}")
     return jsonify(attachment), 201
 
 
@@ -1592,13 +1717,143 @@ def api_download_attachment(sid, aid):
     if not attachment:
         return jsonify(message='Anexo não encontrado.'), 404
 
-    if u['role'] == 'vendedor':
-        sinistro = db_get("SELECT * FROM sinistros WHERE id=?", (sid,))
-        if not sinistro or str(sinistro.get('seller') or '') != u['username']:
-            return jsonify(message='Acesso negado.'), 403
-    
+    sinistro = db_get("SELECT * FROM sinistros WHERE id=?", (sid,))
+    if u['role'] == 'vendedor' and (not sinistro or str(sinistro.get('seller') or '') != u['username']):
+        return jsonify(message='Acesso negado.'), 403
+    if not sinistro_access_ok(u, sinistro):
+        return jsonify(message='Sinistro não encontrado.'), 404
+
     upload_folder = os.path.join(os.path.dirname(__file__), 'uploads', 'sinistros')
     return send_from_directory(upload_folder, attachment['filename'], as_attachment=True, download_name=attachment['originalName'])
+
+
+@app.post('/api/sinistros/<int:sid>/enviar')
+@auth_required
+def api_sinistro_enviar(sid):
+    u = g.user
+    if u['role'] != 'vendedor':
+        return jsonify(message='Acesso negado.'), 403
+
+    sinistro = db_get("SELECT * FROM sinistros WHERE id=?", (sid,))
+    if not sinistro:
+        return jsonify(message='Sinistro não encontrado.'), 404
+    if str(sinistro.get('seller') or '') != u['username']:
+        return jsonify(message='Você só pode enviar o seu próprio sinistro.'), 403
+    if str(sinistro.get('status') or '') not in VENDEDOR_EDITABLE_STATUS:
+        return jsonify(message='Este sinistro já foi enviado ao agente.'), 400
+
+    campos = (('client', 'nome do cliente'), ('cpf', 'CPF'), ('description', 'descrição'), ('sinistroDate', 'data do ocorrido'))
+    faltando = [label for key, label in campos if not str(sinistro.get(key) or '').strip()]
+    if faltando:
+        return jsonify(message='Preencha antes de enviar: ' + ', '.join(faltando) + '.'), 400
+    total_anexos = db_get("SELECT COUNT(*) AS total FROM sinistro_attachments WHERE sinistro_id=?", (sid,))
+    if not total_anexos or total_anexos['total'] < 1:
+        return jsonify(message='Anexe ao menos um documento antes de enviar.'), 400
+
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    db_run(
+        "UPDATE sinistros SET status='Aguardando agente', enviadoAt=?, origem=?, criadoPor=?, motivoPendencia=NULL WHERE id=?",
+        (now, sinistro.get('origem') or 'vendedor', sinistro.get('criadoPor') or u['username'], sid)
+    )
+    db_run(
+        "INSERT INTO sinistro_history (sinistro_id,date,event,actor) VALUES (?,?,?,?)",
+        (sid, now, 'Sinistro enviado ao agente', u['name'])
+    )
+    return jsonify(db_get("SELECT * FROM sinistros WHERE id=?", (sid,)))
+
+
+@app.post('/api/sinistros/<int:sid>/assumir')
+@auth_required
+def api_sinistro_assumir(sid):
+    u = g.user
+    if u['role'] != 'sinistro':
+        return jsonify(message='Acesso negado.'), 403
+
+    sinistro = db_get("SELECT * FROM sinistros WHERE id=?", (sid,))
+    if not sinistro:
+        return jsonify(message='Sinistro não encontrado.'), 404
+
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    if str(sinistro.get('status') or '') != 'Aguardando agente':
+        return jsonify(message='Só é possível assumir sinistros que estão aguardando um agente.'), 400
+    status = 'Em andamento'
+    db_run(
+        "UPDATE sinistros SET status=?, assumidoPor=?, assumidoAt=? WHERE id=?",
+        (status, u['username'], now, sid)
+    )
+    db_run(
+        "INSERT INTO sinistro_history (sinistro_id,date,event,actor) VALUES (?,?,?,?)",
+        (sid, now, f'Sinistro assumido por {u["name"]}', u['name'])
+    )
+    updated = db_get("SELECT * FROM sinistros WHERE id=?", (sid,))
+    updated['assumidoPor'] = u['username']
+    return jsonify(updated)
+
+
+@app.post('/api/sinistros/<int:sid>/pendencia')
+@auth_required
+def api_sinistro_pendencia(sid):
+    u = g.user
+    if u['role'] != 'sinistro':
+        return jsonify(message='Acesso negado.'), 403
+
+    sinistro = db_get("SELECT * FROM sinistros WHERE id=?", (sid,))
+    if not sinistro:
+        return jsonify(message='Sinistro não encontrado.'), 404
+
+    data = request.json or {}
+    motivo = str(data.get('motivo') or data.get('reason') or '').strip()
+    if not motivo:
+        return jsonify(message='Informe o motivo da pendência.'), 400
+    if not sinistro_access_ok(u, sinistro):
+        return jsonify(message='Sinistro não encontrado.'), 404
+    if sinistro.get('isFinalizado') or str(sinistro.get('status') or '') in ('Rascunho', 'Aguardando agente'):
+        return jsonify(message='Assuma o sinistro antes de pedir documentos.'), 400
+
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    db_run(
+        "UPDATE sinistros SET status='Aguardando documentos', motivoPendencia=?, observacoesVendedor=COALESCE(observacoesVendedor, '') WHERE id=?",
+        (motivo, sid)
+    )
+    db_run(
+        "INSERT INTO sinistro_history (sinistro_id,date,event,actor) VALUES (?,?,?,?)",
+        (sid, now, f'Pendência registrada: {motivo}', u['name'])
+    )
+    return jsonify(db_get("SELECT * FROM sinistros WHERE id=?", (sid,)))
+
+
+@app.post('/api/sinistros/<int:sid>/comunicar')
+@auth_required
+def api_sinistro_comunicar(sid):
+    u = g.user
+    if u['role'] != 'sinistro':
+        return jsonify(message='Acesso negado.'), 403
+
+    sinistro = db_get("SELECT * FROM sinistros WHERE id=?", (sid,))
+    if not sinistro:
+        return jsonify(message='Sinistro não encontrado.'), 404
+
+    data = request.json or {}
+    numero_sinistro = str(data.get('numeroSinistro') or '').strip()
+    if not numero_sinistro:
+        return jsonify(message='Informe o número do sinistro da seguradora.'), 400
+    if not sinistro_access_ok(u, sinistro):
+        return jsonify(message='Sinistro não encontrado.'), 404
+    if sinistro.get('isFinalizado') or str(sinistro.get('status') or '') in ('Rascunho', 'Aguardando agente'):
+        return jsonify(message='Assuma o sinistro antes de comunicar à seguradora.'), 400
+    if sinistro.get('comunicadoAt'):
+        return jsonify(message='Este sinistro já foi comunicado à seguradora.'), 400
+
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    db_run(
+        "UPDATE sinistros SET status='Comunicado à seguradora', numeroSinistro=?, comunicadoAt=? WHERE id=?",
+        (numero_sinistro, now, sid)
+    )
+    db_run(
+        "INSERT INTO sinistro_history (sinistro_id,date,event,actor) VALUES (?,?,?,?)",
+        (sid, now, f'Sinistro comunicado à seguradora: {numero_sinistro}', u['name'])
+    )
+    return jsonify(db_get("SELECT * FROM sinistros WHERE id=?", (sid,)))
 
 
 @app.route('/api/sinistros/<int:sid>/status', methods=['PUT'])
@@ -1613,11 +1868,16 @@ def api_update_status(sid):
     if not sinistro:
         return jsonify(message='Sinistro não encontrado.'), 404
     
+    if not sinistro_access_ok(u, sinistro):
+        return jsonify(message='Sinistro não encontrado.'), 404
+
     data = request.json or {}
     new_status = validate_sinistro_status(data.get('status', ''))
 
     if not new_status:
         return jsonify(message='Status inválido ou não permitido para este fluxo.'), 400
+    if new_status in MANUAL_BLOCKED_STATUS:
+        return jsonify(message='Este status só é definido pelas ações de enviar, assumir ou comunicar.'), 400
 
     if sinistro['isFinalizado'] and new_status != 'Finalizado':
         return jsonify(message='Sinistro finalizado não pode retornar para outro status.'), 400
