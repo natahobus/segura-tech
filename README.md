@@ -2,67 +2,56 @@
 
 **Sistema interno de gestão para corretoras de seguros**
 
-> Projeto de Desenvolvimento — UniSenac | Centro Universitário RS
+> Projeto de Desenvolvimento I — UniSenac | Centro Universitário RS
 > Campus Pelotas · Fecomércio · IFEP · Sesc · Sindicatos Empresariais
 >
-> **Autores:** Natã Hobus Kuhn, Gabriel Reboredo
+> **Autores:** Natã Hobus Kuhn, Gabriel Schmidt
 > **Orientação:** Profª. Me. Bruna Ribeiro, Prof. Me. Gladimir Catarino
 
 ---
 
 ## Sobre o projeto
 
-O **SeguraTech** é um sistema web interno pensado para o dia a dia de uma **corretora de seguros** — não para o cliente final, mas para a própria equipe (corretores/vendedores, analistas de emissão, analistas de sinistro e o gestor da corretora).
+O **SeguraTech** é um sistema web interno pensado para o dia a dia de uma **corretora de seguros**. Ele não é para o cliente final, e sim para a equipe: vendedores, analistas de emissão, agentes de sinistro e o gestor da corretora.
 
-A ideia nasceu de um problema bem concreto observado em uma corretora real: praticamente todo o processo ainda é feito **no papel**. Apólices ficam guardadas em caixas físicas organizadas por mês/ano, propostas são conferidas folha por folha, renovações dependem de alguém lembrar de tirar o papel da caixa, e indicações de clientes (leads) chegam por WhatsApp ou e-mail e acabam viram anotações soltas. Isso gera perda de documentos, retrabalho, atrasos em renovações e nenhuma visibilidade gerencial sobre o que está acontecendo.
+A ideia nasceu de um problema observado em uma corretora real: quase todo o processo ainda é feito **no papel**. Apólices ficam em caixas físicas organizadas por mês e ano, propostas são conferidas folha por folha, renovações dependem de alguém lembrar de tirar o papel da caixa, e indicações de clientes chegam por WhatsApp ou e-mail e viram anotações soltas. O resultado é perda de documentos, retrabalho, atraso em renovações e nenhuma visibilidade gerencial.
 
-O SeguraTech centraliza esse fluxo inteiro em uma única plataforma: **apólices, propostas, emissão, renovações, indicações e sinistros**, cada um com seu processo, seu histórico e seu responsável — eliminando o papel e dando ao gestor uma visão real do negócio.
+O SeguraTech centraliza esse fluxo em uma única plataforma: **apólices, propostas, emissão, renovações, indicações e sinistros**, cada um com seu processo, seu histórico e seu responsável.
 
-##  O problema, em detalhes
+## O problema, em detalhes
 
- Problema no processo atual  Consequência 
-
-- Apólices emitidas em papel, guardadas em caixas por mês/ano | Risco de perda e demora para localizar um documento 
-- Conferência manual de propostas (nome, CPF, seguradora) | Sem registro estruturado de erros, retrabalho 
-- Renovações dependem do gestor retirar o papel da caixa | Esquecimentos e atrasos 
-- Indicações (leads) chegam por e-mail/WhatsApp | Viram planilhas soltas, sem padronização nem visibilidade 
-- Sinistros sem controle centralizado | Histórico, anexos e status espalhados entre pastas físicas e anotações à mão 
-
-## 🎯 Público-alvo
-
-**Corretoras de seguros** de pequeno e médio porte que ainda usam processos manuais e físicos para gestão de apólices, renovações e clientes — cenário muito comum no setor, onde soluções prontas do mercado são genéricas demais ou caras demais (CRMs como Salesforce) para o tamanho da operação.
-
-## 👤 Personas
-
-- **Carlos Mendes — Gestor.** Sócio da corretora. Distribui indicações e renovações, acompanha metas. Frustrado com esquecimentos do processo manual; quer relatórios rápidos e alertas.
-- **Carla Vendas — Vendedora/Corretora.** Atende clientes pessoalmente e pelo WhatsApp. Cria propostas com PDF e quer ver, num só lugar, suas renovações e indicações.
-- **Lucas — Analista de Emissão.** Confere propostas junto à seguradora. Precisa de uma fila organizada, com opção clara de aprovar (anexando a apólice) ou devolver com motivo.
-- **Patrícia — Analista de Sinistro.** Registra e acompanha sinistros de segurados e terceiros. Precisa de histórico, anexos e status centralizados, sem depender de papel.
-
-## 💡 Proposta de solução
-
-Um sistema interno único, dividido em módulos que espelham o fluxo real da corretora:
-
-- **Gestão de Apólices** — cadastro, upload de PDF, status de vigência e marcação de renovação, sem caixas físicas.
-- **Módulo de Emissão** — fila de propostas com tela de conferência, aprovação (anexando a apólice) ou devolução com motivo.
-- **Gestão de Indicações e Renovações** — o gestor envia indicações e renovações ao vendedor, com status de contato e histórico, substituindo planilhas soltas.
-- **Módulo de Sinistros** — registro de segurado/terceiro, edição, anexos, histórico de andamento e finalização.
-- **Dashboard & Indicadores** — visão gerencial com apólices ativas, renovações pendentes, propostas em aberto e sinistros por mês.
-- **Controle de Acesso** — perfis distintos (gestor, vendedor, emissão, sinistro) com permissões específicas por rota da API.
-
-### Diferencial em relação a outras soluções
-
-| Alternativa | Limitação |
+| Problema no processo atual | Consequência |
 |---|---|
-| Sistemas genéricos de corretoras | Focados só na emissão de apólices, sem fila de conferência estruturada, devolução com motivo ou módulo de sinistro integrado |
-| CRMs genéricos (Salesforce e afins) | Robustos, mas sem foco em seguros — exigem customização cara para cobrir apólices, renovações e sinistros |
-| Planilhas e e-mail | Solução mais comum em corretoras pequenas: totalmente manual, sem alertas nem histórico estruturado, alto risco de perda de dado |
+| Apólices emitidas em papel, guardadas em caixas por mês/ano | Risco de perda e demora para localizar um documento |
+| Conferência manual de propostas (nome, CPF, seguradora) | Sem registro estruturado de erros, retrabalho |
+| Renovações dependem do gestor retirar o papel da caixa | Esquecimentos e atrasos |
+| Indicações (leads) chegam por e-mail/WhatsApp | Viram planilhas soltas, sem padronização nem visibilidade |
+| Sinistros sem controle centralizado | Histórico, anexos e status espalhados entre pastas físicas e anotações à mão |
+| Cliente passa os dados e documentos do sinistro ao vendedor, que repassa ao agente | Informação perdida no caminho e documentos faltando na hora de comunicar |
 
-O SeguraTech nasce **sob medida** para a rotina de uma corretora: fluxo de emissão com fila estruturada (aprovar/devolver com motivo) e módulo de sinistros com histórico e anexos.
+## Público-alvo
 
-## ⚙️ Como funciona o fluxo principal (propostas)
+**Corretoras de seguros** de pequeno e médio porte que ainda usam processos manuais e físicos para gestão de apólices, renovações e clientes. É um cenário comum no setor, onde as soluções prontas do mercado são genéricas demais ou caras demais para o tamanho da operação.
 
-Esse é o coração do sistema — o caminho de uma proposta desde a criação até virar apólice:
+## Personas
+
+- **Carlos Mendes, Gestor.** Sócio da corretora. Distribui indicações e renovações e acompanha metas. Quer relatórios rápidos e alertas.
+- **Carla Vendas, Vendedora.** Atende clientes pessoalmente e pelo WhatsApp. Cria propostas e seguros novos, coleta os dados e documentos de sinistros e quer ver tudo num só lugar.
+- **Lucas, Analista de Emissão.** Confere propostas junto à seguradora. Precisa de uma fila organizada, com opção clara de aprovar (anexando a apólice) ou devolver com motivo.
+- **Patrícia, Agente de Sinistro.** Recebe os sinistros enviados pelos vendedores, confere a documentação, comunica no site da seguradora e acompanha o andamento. Também abre sinistros do zero quando o cliente a procura direto.
+
+## Módulos
+
+- **Apólices:** cadastro, upload de PDF, busca, vigência e marcação de renovação, sem caixas físicas.
+- **Seguro novo:** o vendedor monta a proposta de um cliente que não veio por indicação nem renovação e envia direto para a fila de emissão, sem depender do gestor.
+- **Emissão:** fila de propostas com tela de conferência, aprovação (anexando a apólice) ou devolução com motivo.
+- **Indicações e renovações:** o gestor envia ao vendedor, com status de contato e histórico.
+- **Sinistros:** duas portas de entrada (vendedor e agente), com envio, devolução por pendência, comunicação à seguradora e acompanhamento.
+- **Dashboard:** visão por perfil, com apólices ativas, renovações pendentes, propostas em aberto e sinistros por status e mês.
+- **Segu, assistente interno:** chat em um botão no canto da tela, que responde dúvidas do corretor usando IA (OpenRouter).
+- **Controle de acesso:** perfis (gestor, vendedor, emissão, sinistro) com permissões validadas no backend.
+
+## Fluxo de propostas
 
 ```
 Vendedor cria proposta (com PDF opcional)
@@ -77,204 +66,254 @@ Vendedor cria proposta (com PDF opcional)
         │  anexa PDF da apólice)        "Devolvida"
         ▼                                    │
     "Emitida"                    (vendedor corrige e reenvia)
-   (gera/atualiza registro                    │
-    em Apólices)                              └──────► volta para "Aguardando emissão"
+   (gera registro em Apólices)               │
+                                             └──────► volta para "Aguardando emissão"
 ```
 
-- **Vendedor**: cria a proposta, envia para emissão, corrige propostas devolvidas.
-- **Emissão**: confere a proposta, aprova anexando o PDF da apólice emitida pela seguradora (gerando o registro em `policies`) ou devolve com um motivo padronizado (ex.: Pagamento recusado, Vistoria pendente, Documentação incompleta, Erro cadastral, Outros).
-- Todo evento (criada, enviada, devolvida, corrigida, emitida) fica registrado no **histórico da proposta**, criando rastreabilidade completa — o que hoje, no papel, simplesmente não existe.
+A proposta pode nascer de três lugares: uma **indicação**, uma **renovação** ou a tela **Seguro novo**. Todo evento fica registrado no histórico da proposta.
 
-## 🗂️ Casos de uso por perfil
+## Fluxo de sinistros
 
-- **Gestor**: enviar indicação para vendedor, marcar apólice para renovação/não renovada, anexar PDF de renovação, visualizar indicadores gerenciais, editar/excluir/atualizar status/finalizar sinistro.
-- **Vendedor**: atualizar status da indicação, marcar apólice para renovação/não renovada, criar proposta com PDF, enviar/reenviar proposta para emissão, corrigir proposta devolvida, visualizar indicadores.
-- **Analista de Emissão**: conferir dados da proposta, devolver proposta (com motivo), anexar apólice e emitir.
-- **Analista de Sinistro**: registrar sinistro (segurado/terceiro), editar/excluir sinistro, anexar documento, atualizar status/finalizar sinistro.
+O vendedor faz o primeiro contato com o cliente e junta os dados e documentos, mas **nunca comunica na seguradora**. Quem comunica, no site da seguradora, é sempre o agente de sinistro. O cliente também pode procurar o agente direto.
 
-## 🗃️ Modelo de dados
+```
+Porta A: Vendedor                          Porta B: Agente de sinistro
+   │                                              │
+   ▼                                              ▼
+"Rascunho" (só ele vê)                  Abre do zero ("Em andamento")
+   │  (envia ao agente)                           │
+   ▼                                              │
+"Aguardando agente"                               │
+   │  (agente assume)                             │
+   ▼                                              │
+"Em análise" ◄────────────────────────────────────┘
+   │
+   ├──► Falta documento: devolve ao vendedor com motivo ("Aguardando documentos")
+   │         └── vendedor corrige, anexa e reenvia ──► volta para o agente
+   │
+   ▼  (agente comunica no site da seguradora e registra o número)
+"Comunicado à seguradora"
+   │
+   ▼
+Acompanhamento ──► demais status ──► "Finalizado"
+```
 
-Banco real (`database.sqlite`) com 9 tabelas:
+**Tela do agente de sinistro**
+
+- **Adicionar sinistro:** barra com os sinistros recebidos dos vendedores (com contador), mais o formulário de abertura direta. Em cada sinistro há o botão "Assumir", um resumo pronto para copiar e colar no site da seguradora, o campo do número da seguradora e a opção de devolver ao vendedor.
+- **Acompanhar sinistro:** sinistros já comunicados, em abas (Aguardando documentos, Em andamento, Finalizados), separados em **Segurado** e **Terceiro**.
+
+**Tela do vendedor:** formulário "Novo sinistro" com upload de documentos por tipo (B.O., CNH, CRLV, fotos e outros), "Salvar rascunho" ou "Enviar ao agente", e abas Devolvidos pelo agente, Rascunhos, Enviados e Finalizados. Quando o agente devolve, o motivo aparece em destaque.
+
+## Facilidades de preenchimento
+
+- **Autopreenchimento:** ao digitar o CPF (11 números) ou o número da apólice nos formulários de sinistro, o sistema puxa nome, telefone, seguradora e, quando houver, o veículo do último sinistro. Só preenche campos vazios. O vendedor só encontra clientes das próprias apólices.
+- **Máscara e validação de CPF:** formato `000.000.000-00`, exatamente 11 números, validado também no servidor.
+- **Máscara de telefone:** `(53) 99999-9999`, com ou sem DDI (`+55`), fixo ou celular.
+- **Vigência automática:** ao informar o início da vigência, o fim é preenchido com um ano depois (28/10/2026 vira 28/10/2027). O campo continua editável.
+- **Upload seguro:** apenas PDF, JPG e PNG, até 10 MB por arquivo, com conferência do cabeçalho do PDF.
+
+## Casos de uso por perfil
+
+- **Gestor:** enviar indicação ao vendedor, marcar apólice para renovação ou não renovada, anexar PDF de renovação, acompanhar indicadores e ver todos os sinistros e propostas.
+- **Vendedor:** atualizar status de indicações, criar proposta e seguro novo, enviar ou reenviar para emissão, corrigir proposta devolvida, abrir sinistro e enviá-lo ao agente.
+- **Analista de Emissão:** conferir dados da proposta, devolver com motivo, anexar apólice e emitir.
+- **Agente de Sinistro:** assumir sinistros enviados, devolver por pendência, comunicar à seguradora, abrir sinistro direto e acompanhar até finalizar.
+
+## Modelo de dados
+
+Banco `database.sqlite` com 9 tabelas:
 
 | Tabela | Finalidade |
 |---|---|
-| `users` | Usuários do sistema e seus perfis (vendedor, emissão, sinistro, gestor) |
-| `sessions` | Tokens de sessão ativos por usuário |
-| `leads` | Indicações de clientes recebidas pelo gestor e distribuídas aos vendedores |
-| `proposals` | Propostas em andamento, do rascunho até a emissão |
-| `proposal_history` | Histórico de eventos de cada proposta (auditoria) |
-| `policies` | Apólices ativas, com PDF, vigência e status de renovação |
-| `sinistros` | Sinistros abertos, de segurados ou terceiros |
+| `users` | Usuários do sistema e seus perfis |
+| `sessions` | Tokens de sessão ativos |
+| `leads` | Indicações recebidas pelo gestor e distribuídas aos vendedores |
+| `proposals` | Propostas, do rascunho até a emissão |
+| `proposal_history` | Histórico de eventos de cada proposta |
+| `policies` | Apólices, com PDF, vigência e status de renovação |
+| `sinistros` | Sinistros, com origem (vendedor ou agente), responsável e dados da comunicação |
 | `sinistro_history` | Histórico de andamento de cada sinistro |
-| `sinistro_attachments` | Anexos (documentos, fotos) vinculados a um sinistro |
+| `sinistro_attachments` | Documentos vinculados a um sinistro |
 
-Relacionamentos principais: um usuário (`seller`) pode ter várias `leads`, `proposals`, `policies` e `sinistros`; uma `proposal` pode originar uma `policy`; `proposals` e `sinistros` têm suas tabelas de histórico e anexos associadas via chave estrangeira.
+O esquema evolui por migração aditiva: no início do servidor, colunas novas são criadas com `ALTER TABLE`, sem apagar dados existentes.
 
-## 🛠️ Tecnologias utilizadas
+## Tecnologias
 
 | Camada | Tecnologia |
 |---|---|
-| Backend | Python 3 + Flask + Flask-CORS — API REST com autenticação por token de sessão |
-| Banco de dados | SQLite (modo WAL), com migração incremental de colunas no boot da aplicação |
-| Frontend | HTML5 + CSS3 + JavaScript puro (SPA leve, sem framework), consumo da API via `fetch` |
-| Infraestrutura | Git/GitHub para versionamento, scripts `start.sh`/`start.bat` para subir o ambiente |
-| Ferramentas | Insomnia (testes de API), VS Code |
+| Backend | Python 3 + Flask + Flask-CORS, API REST com autenticação por token de sessão |
+| Banco de dados | SQLite (modo WAL) |
+| Frontend | HTML5 + CSS3 + JavaScript puro, sem framework, consumindo a API via `fetch` |
+| IA (Segu) | API do OpenRouter, chamada pelo backend |
+| Infraestrutura | Git/GitHub, scripts `start.sh` e `start.bat` |
 
-> **Observação:** o planejamento inicial (RNF) previa Node.js/TypeScript + MySQL/Sequelize. A implementação foi migrada para Python/Flask/SQLite por restrição do ambiente de execução disponível para o protótipo.
+> O planejamento inicial previa Node.js/TypeScript + MySQL. A implementação foi para Python/Flask/SQLite por restrição do ambiente disponível para o protótipo.
 
-## 📋 Requisitos funcionais
+## Requisitos funcionais
 
 | ID | Descrição |
 |---|---|
-| RF01 | Autenticação por usuário/senha com token de sessão e controle de acesso por perfil (vendedor, emissão, sinistro, gestor) |
-| RF02 | Gestão de indicações (leads): gestor envia ao vendedor; vendedor atualiza status (Novo, Em contato, Em proposta, Fechado...) |
+| RF01 | Autenticação por usuário e senha, com token de sessão e controle de acesso por perfil |
+| RF02 | Gestão de indicações: o gestor envia ao vendedor e o vendedor atualiza o status |
 | RF03 | Gestão de apólices: consulta, upload de PDF e marcação de status (Renovar, Renovação solicitada, Não renovada, Emitida) |
-| RF04 | Criação de renovação avulsa pelo gestor, com PDF, telefone, vigência e vendedor de destino |
-| RF05 | Módulo de Emissão: proposta com PDF → fila "Aguardando emissão" → aprovação (anexa apólice) ou devolução com motivo |
-| RF06 | Correção e reenvio de propostas devolvidas pelo vendedor, mantendo histórico de eventos da proposta |
-| RF07 | Módulo de Sinistros: registro (segurado/terceiro), edição, exclusão, anexos, histórico de andamento e finalização |
-| RF08 | Dashboard com indicadores: apólices ativas, renovações pendentes, indicações abertas, propostas pendentes e sinistros por status/mês |
+| RF04 | Renovação avulsa pelo gestor, com PDF, telefone, vigência e vendedor de destino |
+| RF05 | Emissão: proposta com PDF, fila "Aguardando emissão", aprovação (anexa apólice) ou devolução com motivo |
+| RF06 | Correção e reenvio de propostas devolvidas, com histórico |
+| RF07 | Seguro novo: o vendedor cria proposta avulsa e envia direto à emissão |
+| RF08 | Sinistros com duas portas de entrada (vendedor e agente), envio, assunção, pendência com motivo e comunicação à seguradora |
+| RF09 | Acompanhamento de sinistros separado por segurado e terceiro, com anexos e histórico |
+| RF10 | Autopreenchimento de dados do cliente por CPF ou número da apólice |
+| RF11 | Dashboard com indicadores por perfil |
+| RF12 | Assistente Segu para dúvidas do corretor |
 
-## 📐 Requisitos não funcionais
+## Requisitos não funcionais
 
 | ID | Categoria | Descrição |
 |---|---|---|
-| RNF01 | Desempenho | Aplicação local/single-host: SQLite em modo WAL, respostas simples de listagem sem paginação pesada |
-| RNF02 | Segurança | Sessão via token opaco (7 dias), validado em toda rota protegida. **Ponto de evolução:** hoje a senha é armazenada em texto simples — recomenda-se hashing (bcrypt) antes de produção |
-| RNF03 | Usabilidade | Interface web responsiva em HTML/CSS/JS, com atalhos de login para teste rápido por perfil (v/e/s/g) |
-| RNF04 | Manutenibilidade | Backend em camadas simples (rotas Flask + helpers de banco), API REST documentada em `API_TESTS.sh`, front-end desacoplado do back |
-| RNF05 | Escalabilidade | Estrutura preparada para migrar de SQLite para um banco cliente-servidor (ex.: PostgreSQL/MySQL) sem alterar o contrato da API |
+| RNF01 | Desempenho | Aplicação local de um servidor, SQLite em modo WAL, listagens simples |
+| RNF02 | Segurança | Senhas com hash (PBKDF2/scrypt), sessão com token opaco de 7 dias, bloqueio após tentativas de login inválidas (HTTP 429), permissões validadas no backend (403/404), upload restrito por extensão, tamanho e conteúdo |
+| RNF03 | Usabilidade | Interface responsiva, máscaras de entrada, atalhos de login por perfil (`v`/`e`/`s`/`g`) |
+| RNF04 | Manutenibilidade | Rotas Flask com helpers de banco, API testável por `API_TESTS.sh` e `scripts/test_permissoes.py` |
+| RNF05 | Escalabilidade | Estrutura preparada para trocar o SQLite por PostgreSQL ou MySQL sem mudar o contrato da API |
 
-## 📁 Estrutura do projeto
+## Estrutura do projeto
 
 ```
 seguratech/
-├── server.py              # API Flask principal (rotas, regras de negócio, banco)
-├── database.sqlite        # Banco SQLite local (gerado em execução)
-├── API_TESTS.sh           # Roteiro de testes da API (curl)
-├── package.json           # Metadados/scripts do projeto
-├── start.sh / start.bat   # Scripts para subir o ambiente (Linux/Mac e Windows)
+├── server.py                  # API Flask (rotas, regras de negócio, banco)
+├── database.sqlite            # Banco local (gerado na execução, fora do Git)
+├── API_TESTS.sh               # Roteiro de testes da API (curl)
+├── start.sh / start.bat       # Sobem o ambiente (Linux/Mac e Windows)
+├── .env.example               # Modelo das variáveis de ambiente
 ├── public/
-│   ├── login.html         # Tela de login
-│   ├── login.js           # Lógica de autenticação
-│   ├── index.html         # Aplicação principal (SPA)
-│   ├── app.js              # Lógica do app (rotas de tela, chamadas à API)
-│   └── styles.css         # Estilos da aplicação
-├── uploads/
-│   ├── propostas/         # PDFs de propostas enviadas pelo vendedor
-│   ├── policies/          # PDFs de apólices emitidas/renovadas
-│   └── sinistros/         # Anexos de sinistros
-└── .gitignore
+│   ├── login.html / login.js  # Tela de login
+│   ├── index.html             # Aplicação principal
+│   ├── app.js                 # Lógica das telas e chamadas à API
+│   └── styles.css             # Estilos
+├── scripts/
+│   ├── test_permissoes.py     # Testes de permissão por perfil
+│   └── limpar_dados.py        # Limpa dados de teste (com backup)
+└── uploads/                   # Arquivos enviados (fora do Git)
+    ├── propostas/
+    ├── policies/
+    └── sinistros/
 ```
 
-## ✅ Etapa atual validada
+## Como executar localmente
 
-A aplicação já está com a base funcional validada em execução local:
-
-- Login com visual em fundo preto e interface mais limpa
-- Atalhos por perfil (`v`, `e`, `s`, `g`) preenchendo usuário e senha sem automatizar o envio
-- Mensagens de erro/êxito mais discretas, sem o flash vermelho agressivo
-- Controle de acesso por perfil validado no backend
-- Bloqueio de login por excesso de tentativas inválidas
-- Validação de status de sinistro e regra de acesso por papel
-- Busca de apólices funcionando via rota de consulta, inclusive para emissões
-
-### Verificação executada
-
-A validação foi feita diretamente contra `http://localhost:3000` usando requisições reais à API:
-
-- perfil `vendedor` em `/api/sinistros` → `200`
-- perfil `emissao` em `/api/sinistros` → `403`
-- perfil `sinistro` em `/api/sinistros` → `200`
-- perfil `gestor` em `/api/sinistros` → `200`
-- tentativas inválidas 1 a 4 → `401`
-- tentativas inválidas 5 e 6 → `429`
-- status inválido em sinistro → `400`
-- regressão final do backend e regras de negócio → `OK`
-
-```bash
-cd segura-tech
-python scripts/test_permissoes.py
-```
-
-## 🚀 Como executar localmente
-
-**Pré-requisitos:** Python 3.7+
+**Pré-requisito:** Python 3.8 ou superior.
 
 ```bash
 # 1. Clone o repositório
 git clone https://github.com/natahobus/segura-tech.git
 cd segura-tech
 
-# 2. Crie o arquivo local de ambiente a partir do exemplo
-copy .env.example .env
+# 2. Crie o arquivo de ambiente a partir do exemplo
+copy .env.example .env        # no Linux/Mac: cp .env.example .env
 
 # 3. Instale as dependências
-pip install flask flask-cors
+pip install flask flask-cors python-dotenv requests
 
 # 4. Rode o servidor
 python server.py
 ```
 
-Depois, abra no navegador:
+Abra `http://localhost:3000` no navegador.
 
-```
-http://localhost:3000
-```
+### Variáveis de ambiente (`.env`)
 
-> O arquivo `.env.example` contém os parâmetros esperados de ambiente e evita expor segredos no repositório.
-
-### Teste rápido por perfil
-
-Na tela de login, pressione uma das teclas de atalho para preencher o usuário de teste correspondente:
-
-| Tecla | Perfil |
+| Variável | Para que serve |
 |---|---|
-| `v` | Vendedor |
-| `e` | Emissão |
-| `s` | Sinistro |
-| `g` | Gestor |
+| `PORT` | Porta do servidor (padrão 3000) |
+| `OPENROUTER_API_KEY` | Chave da API usada pelo assistente Segu |
+| `OPENROUTER_MODEL` | Modelo de IA do Segu |
+| `APP_URL` | Endereço da aplicação |
+| `SEED_DEMO_DATA` | Com valor `1`, cria apólices, indicações, propostas e sinistros de exemplo em um banco vazio. Sem isso, o banco nasce só com os 4 usuários |
 
-Fluxo sugerido para testar: cadastrar uma proposta como vendedor → enviar para emissão → aprovar ou devolver como emissão → acompanhar o histórico gerado.
+O arquivo `.env` guarda segredos e **não deve ser enviado ao Git**; o `.gitignore` já o protege.
 
-## 🔐 Perfis de acesso
+### Perfis de teste
 
-- **`vendedor`** — cria e acompanha propostas, atualiza indicações, gerencia suas renovações.
-- **`emissao`** — confere e aprova/devolve propostas, anexa apólices emitidas.
-- **`sinistro`** — registra e acompanha sinistros, anexos e histórico.
-- **`gestor`** — acesso a todas as áreas, cria indicações e renovações avulsas, visualiza indicadores gerenciais.
+| Usuário | Senha | Perfil |
+|---|---|---|
+| `vendedor` | `vendas123` | Vendedor |
+| `emissao` | `emissao123` | Emissão |
+| `sinistro` | `sinistro123` | Agente de sinistro |
+| `gestor` | `gestor123` | Gestor |
 
-## 🔎 Principais rotas da API
+Na tela de login, as teclas `v`, `e`, `s` e `g` preenchem o usuário e a senha do perfil correspondente. **Troque essas senhas antes de qualquer uso real.**
+
+### Roteiros para testar
+
+- **Emissão:** como vendedor, crie uma proposta (ou use Seguro novo) e envie; como emissão, aprove ou devolva; acompanhe o histórico.
+- **Sinistro:** como vendedor, crie um rascunho e envie ao agente; como agente, assuma, devolva por pendência ou comunique; depois confira o sinistro em Acompanhar.
+
+### Limpar os dados de teste
+
+Com o servidor parado:
+
+```bash
+python scripts/limpar_dados.py
+```
+
+O script mostra o que será apagado, pede que você digite `LIMPAR`, salva um backup do banco e mantém os usuários. Os arquivos `database_backup_*.sqlite` não devem ir para o Git.
+
+### Testes automatizados
+
+Com o servidor rodando em `http://localhost:3000`:
+
+```bash
+python scripts/test_permissoes.py
+```
+
+## Perfis de acesso
+
+- **`vendedor`:** cria propostas e seguros novos, atualiza indicações, gerencia renovações e abre sinistros até enviá-los ao agente. Vê só o que é seu.
+- **`emissao`:** confere, aprova ou devolve propostas e anexa as apólices emitidas. Não acessa sinistros.
+- **`sinistro`:** recebe, assume, devolve, comunica e acompanha sinistros. Não vê rascunhos de vendedor.
+- **`gestor`:** acesso de leitura a todas as áreas, cria indicações e renovações avulsas e vê os indicadores.
+
+## Principais rotas da API
 
 | Método | Rota | Descrição |
 |---|---|---|
 | `POST` | `/api/login` | Autenticação e geração de token |
 | `GET` | `/api/overview` | Indicadores do dashboard |
 | `GET/POST` | `/api/leads` | Listagem e criação de indicações |
-| `PUT` | `/api/leads/<id>` | Atualização de status da indicação |
 | `GET/POST` | `/api/propostas` | Listagem e criação de propostas |
-| `PUT` | `/api/propostas/<id>` | Edição/correção de proposta |
-| `POST` | `/api/propostas/<id>/send` | Envio da proposta para emissão |
+| `PUT` | `/api/propostas/<id>` | Correção de proposta |
+| `POST` | `/api/propostas/<id>/send` | Envio para emissão |
 | `POST` | `/api/propostas/<id>/emit` | Aprovação e emissão da apólice |
-| `POST` | `/api/propostas/<id>/reject` | Devolução da proposta com motivo |
-| `GET` | `/api/apolices` | Listagem de apólices |
-| `POST` | `/api/apolices/<id>/upload` | Upload de PDF da apólice |
-| `POST` | `/api/renovacoes` | Criação de renovação avulsa |
+| `POST` | `/api/propostas/<id>/reject` | Devolução com motivo |
+| `GET` | `/api/apolices` | Listagem e busca de apólices |
+| `GET` | `/api/clientes/buscar` | Dados do cliente por CPF ou número da apólice |
+| `POST` | `/api/apolices/<id>/upload` | Upload do PDF da apólice |
+| `POST` | `/api/renovacoes` | Renovação avulsa |
 | `GET/POST` | `/api/sinistros` | Listagem e criação de sinistros |
-| `PUT` | `/api/sinistros/<id>/status` | Atualização de status do sinistro |
-| `PUT` | `/api/sinistros/<id>/finalize` | Finalização do sinistro |
+| `PUT` | `/api/sinistros/<id>` | Edição dos dados do sinistro |
+| `POST` | `/api/sinistros/<id>/enviar` | Vendedor envia ao agente |
+| `POST` | `/api/sinistros/<id>/assumir` | Agente assume |
+| `POST` | `/api/sinistros/<id>/pendencia` | Agente devolve com motivo |
+| `POST` | `/api/sinistros/<id>/comunicar` | Agente registra a comunicação e o número da seguradora |
+| `PUT` | `/api/sinistros/<id>/status` | Atualização de status |
+| `PUT` | `/api/sinistros/<id>/finalize` | Finalização |
+| `POST` | `/api/chat` | Pergunta ao assistente Segu |
 
-Roteiro completo de testes disponível em `API_TESTS.sh`.
+Roteiro completo de testes em `API_TESTS.sh`.
 
-## 🧭 Estado atual e próximos passos
+## Estado atual e próximos passos
 
-Este é um **protótipo funcional** desenvolvido como parte do Projeto de Desenvolvimento I. Pontos já mapeados para evolução:
+Este é um **protótipo funcional** do Projeto de Desenvolvimento I. Pontos mapeados para evoluir:
 
-- Hashing de senha (bcrypt) antes de qualquer uso em produção.
-- Revisão do fluxo de devolução/reenvio de propostas (consistência de notas e histórico).
-- Migração de SQLite para um banco cliente-servidor (PostgreSQL/MySQL), conforme já previsto na arquitetura (RNF05).
-- Ampliação do dashboard com mais indicadores gerenciais.
+- Validar os dígitos verificadores do CPF, além da quantidade de números.
+- Permitir ao vendedor remover um anexo enviado por engano.
+- Ajustar o contador do menu "Sinistros" para contar só os que aguardam comunicação.
+- Aviso de prazo para sinistro parado sem ser assumido.
+- Migrar de SQLite para um banco cliente-servidor (PostgreSQL ou MySQL).
+- Ampliar o dashboard com mais indicadores gerenciais.
+- Trocar as senhas de teste e rever a configuração antes de qualquer uso em produção.
 
-## 📄 Licença
+## Licença
 
-Projeto acadêmico desenvolvido para a disciplina de Projeto de Desenvolvimento— UniSenac.
+Projeto acadêmico desenvolvido para a disciplina de Projeto de Desenvolvimento I — UniSenac.
