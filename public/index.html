@@ -23,10 +23,11 @@
       <button class="topbar-nav-btn active" data-roles="vendedor,emissao,sinistro,gestor" onclick="showScreen('dashboard', this)">Dashboard</button>
       <button class="topbar-nav-btn" data-roles="vendedor,gestor" onclick="showScreen('indicacoes', this)">Indicações</button>
       <button class="topbar-nav-btn" data-roles="vendedor,gestor" onclick="showScreen('renovacao', this)">Renovação</button>
+      <button class="topbar-nav-btn" data-roles="vendedor" onclick="showScreen('novoseguro', this)">Seguro novo</button>
       <button class="topbar-nav-btn" data-roles="vendedor" onclick="showScreen('seguros', this)">Seguros</button>
       <button class="topbar-nav-btn" data-roles="vendedor,gestor,emissao" onclick="showScreen('apolice', this)">Apólices</button>
       <button class="topbar-nav-btn" data-roles="emissao,gestor" onclick="showScreen('emissao', this)">Emissão</button>
-      <button class="topbar-nav-btn" data-roles="sinistro,gestor" onclick="showScreen('sinistros', this)">Sinistros</button>
+      <button class="topbar-nav-btn" data-roles="vendedor,sinistro,gestor" onclick="showScreen('sinistros', this)">Sinistros</button>
     </nav>
 
     <div class="topbar-right">
@@ -53,6 +54,9 @@
         <span>Renovação</span>
         <span class="sidebar-badge" id="badge-renovacao" hidden></span>
       </div>
+      <div class="sidebar-item" data-roles="vendedor" onclick="showScreen('novoseguro', null, this)">
+        <span>Seguro novo</span>
+      </div>
       <div class="sidebar-item" data-roles="vendedor" onclick="showScreen('seguros', null, this)">
         <span>Seguros</span>
       </div>
@@ -63,7 +67,7 @@
         <span>Emissão</span>
         <span class="sidebar-badge" id="badge-emissao" hidden></span>
       </div>
-      <div class="sidebar-item" data-roles="sinistro,gestor" onclick="showScreen('sinistros', null, this)">
+      <div class="sidebar-item" data-roles="vendedor,sinistro,gestor" onclick="showScreen('sinistros', null, this)">
         <span>Sinistros</span>
         <span class="sidebar-badge" id="badge-sinistros" hidden></span>
       </div>
@@ -263,6 +267,41 @@
         </div>
       </div>
 
+      <div class="screen" id="screen-novoseguro">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Seguro novo</h1>
+            <p class="page-subtitle">Cliente novo, sem indicação nem renovação? Monte a proposta e envie direto para a fila de emissão.</p>
+          </div>
+        </div>
+        <div class="card" style="max-width:760px;">
+          <div class="card-header"><div class="card-title">Nova proposta</div></div>
+          <div class="card-body">
+            <div class="grid2">
+              <div class="field"><label>Cliente *</label><input id="nsClient" placeholder="Nome do cliente"></div>
+              <div class="field"><label>CPF *</label><input id="nsCpf" placeholder="000.000.000-00"></div>
+            </div>
+            <div class="grid2">
+              <div class="field"><label>Seguradora *</label><select id="nsInsurer"><option value="">Selecione</option><option>Porto Seguro</option><option>Bradesco Seguros</option><option>Allianz</option><option>SulAmérica</option><option>HDI Seguros</option></select></div>
+              <div class="field"><label>Tipo de seguro *</label><select id="nsType"><option>Automóvel</option><option>Residencial</option><option>Vida</option><option>Empresarial</option></select></div>
+            </div>
+            <div class="grid2">
+              <div class="field"><label>Vencimento da 1ª parcela</label><input type="date" id="nsFirstDue"></div>
+              <div class="field"><label>Início de vigência</label><input type="date" id="nsStart"></div>
+            </div>
+            <div class="grid2">
+              <div class="field"><label>Fim de vigência</label><input type="date" id="nsEnd"></div>
+              <div class="field"><label>PDF da proposta</label><input type="file" id="nsPdf" accept=".pdf,application/pdf"></div>
+            </div>
+            <div class="field"><label>Observações para a emissão</label><textarea id="nsNotes" rows="3" placeholder="Ex: cliente quer pagar no cartão, forma de pagamento, detalhes do bem segurado..."></textarea></div>
+            <div class="form-footer">
+              <button class="btn secondary" type="button" onclick="createNovoSeguro(event, false)">Salvar sem enviar</button>
+              <button class="btn primary" type="button" onclick="createNovoSeguro(event, true)">Enviar para emissão</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="screen" id="screen-seguros">
         <div class="page-header">
           <div>
@@ -365,15 +404,78 @@
             <h1 class="page-title">Sinistros</h1>
             <p class="page-subtitle">Registre ocorrências e acompanhe o histórico completo.</p>
           </div>
-          <div style="display:flex;gap:12px;">
-            <button class="btn secondary" id="btnAtivos" onclick="loadSinistros(false)" style="background:var(--primary);color:white;">Ativos</button>
-            <button class="btn secondary" id="btnFinalizados" onclick="loadSinistros(true)">Finalizados</button>
-          </div>
         </div>
+        <div id="sinistroModes" class="sin-modes" data-roles="sinistro" style="display:none;"></div>
+        <div id="sinistroTabs" class="sin-tabs"></div>
+        <div id="sinistroEnvolvidoBar" class="sin-pills" style="display:none;"></div>
 
-        <div class="grid2-3">
+        <div class="card" style="margin-bottom:20px;">
+              <div class="card-header"><div class="card-title" id="sinistrosTableTitle">Sinistros</div><div class="sin-hint" id="sinistrosTableHint"></div></div>
+              <div class="table-wrap">
+                <table id="sinistrosTable">
+                  <thead><tr><th>Cliente</th><th>Nº / protocolo</th><th>Tipo</th><th>Origem</th><th>Status</th><th>Ações</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+
+        <div class="grid2-3" id="sinistroFormGrid">
           <div>
-            <div class="card">
+            <div class="card" id="claimCardVendedor" data-roles="vendedor">
+              <div class="card-header"><div class="card-title">Novo sinistro</div></div>
+              <div class="card-body">
+                <p class="sin-flow-text" style="margin-bottom:16px;">Colete os dados do cliente e os documentos. O agente de sinistro faz a comunicação na seguradora.</p>
+                <div class="grid2">
+                  <div class="field"><label>Nome do cliente *</label><input id="vClaimNome" placeholder="Nome completo"></div>
+                  <div class="field"><label>CPF *</label><input id="vClaimCpf" placeholder="000.000.000-00"></div>
+                </div>
+                <div class="grid2">
+                  <div class="field"><label>Telefone</label><input id="vClaimPhone" placeholder="(53) 90000-0000"></div>
+                  <div class="field"><label>Apólice (se souber)</label><input id="vClaimPolicy" placeholder="0009821-4"></div>
+                </div>
+                <div class="grid2">
+                  <div class="field">
+                    <label>Tipo de sinistro</label>
+                    <select id="vClaimType">
+                      <option value="">Selecione</option>
+                      <option value="Colisão">Colisão</option>
+                      <option value="Roubo/Furto">Roubo/Furto</option>
+                      <option value="Incêndio">Incêndio</option>
+                      <option value="Vendaval">Vendaval</option>
+                      <option value="Enchente">Enchente</option>
+                      <option value="Quebra de Vidro">Quebra de Vidro</option>
+                      <option value="Responsabilidade Civil">Responsabilidade Civil</option>
+                      <option value="Acidente Pessoal">Acidente Pessoal</option>
+                      <option value="Assistência 24h">Assistência 24h</option>
+                      <option value="Outros">Outros</option>
+                    </select>
+                  </div>
+                  <div class="field"><label>Data do ocorrido</label><input id="vClaimDate" type="date"></div>
+                </div>
+                <div class="grid2">
+                  <div class="field"><label>Modelo do veículo</label><input id="vClaimVeiculoModelo" placeholder="Honda Civic"></div>
+                  <div class="field"><label>Placa</label><input id="vClaimVeiculoPlaca" placeholder="ABC-1234"></div>
+                </div>
+                <div class="field"><label>O que aconteceu</label><textarea id="vClaimDescription" placeholder="Descreva o ocorrido com data, local e envolvidos."></textarea></div>
+                <div class="field"><label>Observações para o agente</label><textarea id="vClaimObs" rows="2" placeholder="Ex: cliente prefere contato por WhatsApp."></textarea></div>
+                <div class="field">
+                  <label>Documentos (PDF, JPG ou PNG, até 10 MB cada)</label>
+                  <div class="upload-doc-grid">
+                    <div class="doc-upload-item"><label for="vDocBo">B.O.</label><input id="vDocBo" type="file" accept=".pdf,.jpg,.jpeg,.png"></div>
+                    <div class="doc-upload-item"><label for="vDocCnh">CNH</label><input id="vDocCnh" type="file" accept=".pdf,.jpg,.jpeg,.png"></div>
+                    <div class="doc-upload-item"><label for="vDocCrlv">CRLV</label><input id="vDocCrlv" type="file" accept=".pdf,.jpg,.jpeg,.png"></div>
+                    <div class="doc-upload-item"><label for="vDocFotos">Fotos (várias)</label><input id="vDocFotos" type="file" accept=".jpg,.jpeg,.png" multiple></div>
+                    <div class="doc-upload-item"><label for="vDocOutros">Outros</label><input id="vDocOutros" type="file" accept=".pdf,.jpg,.jpeg,.png"></div>
+                  </div>
+                </div>
+                <div class="form-footer">
+                  <button class="btn secondary" type="button" onclick="createClaimVendedor(event, false)">Salvar rascunho</button>
+                  <button class="btn primary" type="button" onclick="createClaimVendedor(event, true)">Enviar ao agente</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" id="claimCardAgente" data-roles="sinistro">
               <div class="card-header"><div class="card-title">Registrar novo sinistro</div></div>
               <div class="card-body">
                 <div class="field" style="margin-top:20px;">
@@ -393,8 +495,39 @@
                 <div id="claimSeguradoOnlyFields">
                   <div class="field"><label>Apólice *</label><input id="claimPolicy" placeholder="0009821-4"></div>
                   <div class="grid2">
-                    <div class="field"><label>Seguradora *</label><input id="claimInsurer" placeholder="Porto Seguro"></div>
-                    <div class="field"><label>Tipo *</label><input id="claimType" placeholder="Colisão, Roubo..."></div>
+                    <div class="field">
+                      <label>Seguradora *</label>
+                      <select id="claimInsurer">
+                        <option value="">Selecione</option>
+                        <option value="YELUM">YELUM</option>
+                        <option value="ALLIRO">ALLIRO</option>
+                        <option value="PORTO">PORTO</option>
+                        <option value="AZUL">AZUL</option>
+                        <option value="ITAU">ITAU</option>
+                        <option value="MITSUI">MITSUI</option>
+                        <option value="ALLIANZ">ALLIANZ</option>
+                        <option value="ZURICH">ZURICH</option>
+                        <option value="BRADESCO">BRADESCO</option>
+                        <option value="TOKIO">TOKIO</option>
+                        <option value="HDI">HDI</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Tipo *</label>
+                      <select id="claimType">
+                        <option value="">Selecione</option>
+                        <option value="Colisão">Colisão</option>
+                        <option value="Roubo/Furto">Roubo/Furto</option>
+                        <option value="Incêndio">Incêndio</option>
+                        <option value="Vendaval">Vendaval</option>
+                        <option value="Enchente">Enchente</option>
+                        <option value="Quebra de Vidro">Quebra de Vidro</option>
+                        <option value="Responsabilidade Civil">Responsabilidade Civil</option>
+                        <option value="Acidente Pessoal">Acidente Pessoal</option>
+                        <option value="Assistência 24h">Assistência 24h</option>
+                        <option value="Outros">Outros</option>
+                      </select>
+                    </div>
                   </div>
                   <div class="grid2">
                     <div class="field"><label>Data do Sinistro</label><input id="claimSinistroDate" type="date"></div>
@@ -412,6 +545,23 @@
                     </select>
                   </div>
                   <div class="field"><label>Descrição</label><textarea id="claimDescription" placeholder="Descreva o sinistro..."></textarea></div>
+                  <div class="field">
+                    <label>Documentação obrigatória *</label>
+                    <div class="upload-doc-grid">
+                      <div class="doc-upload-item">
+                        <label for="claimDocBo">B.O.</label>
+                        <input id="claimDocBo" type="file" accept=".pdf,image/*" />
+                      </div>
+                      <div class="doc-upload-item">
+                        <label for="claimDocCnh">CNH</label>
+                        <input id="claimDocCnh" type="file" accept=".pdf,image/*" />
+                      </div>
+                      <div class="doc-upload-item">
+                        <label for="claimDocCrlv">CRLV</label>
+                        <input id="claimDocCrlv" type="file" accept=".pdf,image/*" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 
                 <!-- Campos para SEGURADO -->
@@ -422,13 +572,13 @@
                     <div class="field"><label>Placa *</label><input id="claimSeguradoVeiculoPlaca" placeholder="ABC-1234"></div>
                   </div>
                   <div class="field"><label>Oficina</label><input id="claimSeguradoOficina" placeholder="Oficina onde está o veículo"></div>
-                  <div class="field"><label>Número do Sinistro *</label><input id="claimSeguradoNumeroSinistro" placeholder="SIN-2026-001"></div>
+                  <div class="field"><label>Número do sinistro na seguradora</label><input id="claimSeguradoNumeroSinistro" placeholder="Preencha após comunicar"></div>
                 </div>
                 
                 <!-- Campos para TERCEIRO -->
                 <div id="terceiroFields" style="display:none;">
                   <h4 style="margin:16px 0 12px;color:var(--text-primary);font-size:14px;font-weight:600;">Dados do Terceiro</h4>
-                  <div class="field"><label>Número do Sinistro do Terceiro *</label><input id="claimTerceiroNumeroSinistro" placeholder="SIN-TERC-2026-001"></div>
+                  <div class="field"><label>Número do sinistro do terceiro</label><input id="claimTerceiroNumeroSinistro" placeholder="SIN-TERC-2026-001"></div>
                   <div class="field"><label>Nome do Terceiro *</label><input id="claimTerceiroNome" placeholder="Nome completo"></div>
                   <div class="field"><label>CPF do Terceiro *</label><input id="claimTerceiroCpf" placeholder="000.000.000-00"></div>
                   <div class="grid2">
@@ -447,24 +597,6 @@
             <div class="card">
               <div class="card-header"><div class="card-title">Sinistros por mês</div></div>
               <div class="card-body" id="sinistroChart"></div>
-            </div>
-            <div class="card" style="margin-top:20px;">
-              <div class="card-header"><div class="card-title" id="sinistrosTableTitle">Sinistros ativos - segurados</div></div>
-              <div class="table-wrap">
-                <table id="sinistrosTable">
-                  <thead><tr><th>Cliente</th><th>Nº do Sinistro</th><th>Ramo/Tipo</th><th>Status</th><th>Ações</th></tr></thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-            </div>
-            <div class="card" style="margin-top:20px;">
-              <div class="card-header"><div class="card-title" id="terceirosTableTitle">Sinistros ativos - terceiros</div></div>
-              <div class="table-wrap">
-                <table id="terceirosTable">
-                  <thead><tr><th>Terceiro</th><th>Nº do Sinistro</th><th>Veículo</th><th>Status</th><th>Ações</th></tr></thead>
-                  <tbody></tbody>
-                </table>
-              </div>
             </div>
           </div>
         </div>
@@ -518,6 +650,8 @@
                   <div><div class="info-label">Oficina</div><div class="info-value" id="modalOficina">-</div></div>
                   <div style="grid-column: 1/-1;"><div class="info-label">Descrição</div><div class="info-value" id="modalDescription">-</div></div>
                 </div>
+
+                <div id="sinistroWorkflowActions" style="display:none;margin-top:18px;border-top:1px solid var(--border);padding-top:18px;"></div>
               </div>
             </div>
 
@@ -539,9 +673,9 @@
             <div class="card">
               <div class="card-header"><div class="card-title">Documentos Anexos</div></div>
               <div class="card-body">
-                <div class="field">
+                <div class="field" id="attachUploadField">
                   <label>Anexar novo documento</label>
-                  <input type="file" id="attachmentFile" style="display:none;" onchange="uploadAttachment()">
+                  <input type="file" id="attachmentFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="uploadAttachment()">
                   <button class="btn secondary" onclick="document.getElementById('attachmentFile').click()" style="width:100%;">Selecionar arquivo</button>
                 </div>
                 <div id="attachmentsList" style="margin-top:16px;"></div>
@@ -551,7 +685,7 @@
 
           <!-- Andamentos -->
           <div>
-            <div class="card" style="margin-bottom:20px;">
+            <div class="card" id="sinistroStatusCard" style="margin-bottom:20px;">
               <div class="card-header"><div class="card-title">Alterar Status</div></div>
               <div class="card-body">
                 <div class="field">
@@ -573,7 +707,7 @@
             <div class="card">
               <div class="card-header"><div class="card-title">Andamentos</div></div>
               <div class="card-body">
-                <div class="field">
+                <div class="field" id="historyAddField">
                   <label>Adicionar andamento</label>
                   <textarea id="newHistoryEvent" placeholder="Ex: Veículo realizou vistoria..." rows="3"></textarea>
                   <button class="btn primary" onclick="addHistoryEvent()" style="margin-top:8px;width:100%;">Adicionar</button>
@@ -601,8 +735,23 @@
           <div class="field"><label>CPF</label><input id="editSinistroCpf"></div>
         </div>
         <div class="grid2">
-          <div class="field"><label>Número do Sinistro</label><input id="editSinistroNumero"></div>
-          <div class="field"><label>Ramo/Tipo</label><input id="editSinistroType"></div>
+          <div class="field" id="editSinistroNumeroField"><label>Número do Sinistro</label><input id="editSinistroNumero"></div>
+          <div class="field">
+            <label>Ramo/Tipo</label>
+            <select id="editSinistroType">
+              <option value="">Selecione</option>
+              <option value="Colisão">Colisão</option>
+              <option value="Roubo/Furto">Roubo/Furto</option>
+              <option value="Incêndio">Incêndio</option>
+              <option value="Vendaval">Vendaval</option>
+              <option value="Enchente">Enchente</option>
+              <option value="Quebra de Vidro">Quebra de Vidro</option>
+              <option value="Responsabilidade Civil">Responsabilidade Civil</option>
+              <option value="Acidente Pessoal">Acidente Pessoal</option>
+              <option value="Assistência 24h">Assistência 24h</option>
+              <option value="Outros">Outros</option>
+            </select>
+          </div>
         </div>
         <div class="grid2">
           <div class="field"><label>Modelo do Veículo</label><input id="editSinistroVeiculoModelo"></div>

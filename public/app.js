@@ -6,7 +6,7 @@ let convertingLeadId = null;
 let naoRenovadoPolicyId = null;
 let activeRenewalPolicyId = null;
 let cachedPolicies = [];
-const screens = ['dashboard', 'indicacoes', 'renovacao', 'seguros', 'apolice', 'emissao', 'sinistros'];
+const screens = ['dashboard', 'indicacoes', 'renovacao', 'novoseguro', 'seguros', 'apolice', 'emissao', 'sinistros'];
 let searchTimeout = null;
 
 // Inicialização
@@ -67,7 +67,7 @@ function showScreen(name, topbarBtn, sidebarItem) {
 
 function allowedRoles() {
   const rolesMap = {
-    vendedor: ['dashboard', 'indicacoes', 'renovacao', 'seguros', 'apolice'],
+    vendedor: ['dashboard', 'indicacoes', 'renovacao', 'novoseguro', 'seguros', 'apolice', 'sinistros'],
     emissao: ['dashboard', 'emissao', 'apolice'],
     sinistro: ['dashboard', 'sinistros', 'apolice'],
     gestor: ['dashboard', 'indicacoes', 'renovacao', 'apolice', 'emissao', 'sinistros']
@@ -1203,68 +1203,180 @@ async function selectProposal(proposalId) {
   }
 }
 
-async function loadSinistros(showFinalized = false) {
-  try {
-    const url = showFinalized ? '/sinistros?finalized=true' : '/sinistros';
-    const sinistros = await apiFetch(url);
-    const tbody = document.querySelector('#sinistrosTable tbody');
-    const terceirosTbody = document.querySelector('#terceirosTable tbody');
-    if (!tbody) return;
-    const segurados = (sinistros || []).filter(item => item.tipoEnvolvido !== 'terceiro');
-    const terceiros = (sinistros || []).filter(item => item.tipoEnvolvido === 'terceiro');
-    
-    // Atualizar título
-    const titleEl = document.getElementById('sinistrosTableTitle');
-    if (titleEl) {
-      titleEl.textContent = showFinalized ? 'Sinistros finalizados - segurados' : 'Sinistros ativos - segurados';
-    }
-    const terceirosTitleEl = document.getElementById('terceirosTableTitle');
-    if (terceirosTitleEl) {
-      terceirosTitleEl.textContent = showFinalized ? 'Sinistros finalizados - terceiros' : 'Sinistros ativos - terceiros';
-    }
-    
-    // Atualizar botões
-    const btnAtivos = document.getElementById('btnAtivos');
-    const btnFinalizados = document.getElementById('btnFinalizados');
-    if (btnAtivos && btnFinalizados) {
-      if (showFinalized) {
-        btnAtivos.style.background = 'var(--surface)';
-        btnAtivos.style.color = 'var(--text-primary)';
-        btnFinalizados.style.background = 'var(--primary)';
-        btnFinalizados.style.color = 'white';
-      } else {
-        btnAtivos.style.background = 'var(--primary)';
-        btnAtivos.style.color = 'white';
-        btnFinalizados.style.background = 'var(--surface)';
-        btnFinalizados.style.color = 'var(--text-primary)';
-      }
-    }
-    
-    tbody.innerHTML = segurados.length ? segurados.map(item => `
-      <tr>
-        <td>${escapeHtml(item.client || '')}</td>
-        <td>${escapeHtml(item.numeroSinistro || item.protocol || '-')}</td>
-        <td>${escapeHtml(item.type || '-')}</td>
-        <td><span class="badge ${getStatusBadgeClass(item.status)}">${escapeHtml(item.status || '')}</span></td>
-        <td><button class="btn secondary" style="padding:6px 14px;font-size:13px;" onclick="openSinistroModal(${item.id})">Ver detalhes</button></td>
-      </tr>
-    `).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Nenhum sinistro de segurado encontrado.</td></tr>';
+// ─────────────────────────────────────────────
+// Lista de sinistros com abas por perfil
+// ─────────────────────────────────────────────
+let sinistroTab = null;
+let sinistroEnvolvido = 'segurado'; // só no Acompanhar do agente: 'segurado' ou 'terceiro'
+let sinistroMode = 'adicionar'; // só para o agente: 'adicionar' ou 'acompanhar'
+let sinistrosCache = [];
 
-    if (terceirosTbody) {
-      terceirosTbody.innerHTML = terceiros.length ? terceiros.map(item => `
-        <tr>
-          <td>${escapeHtml(item.client || '')}</td>
-          <td>${escapeHtml(item.numeroSinistro || item.protocol || '-')}</td>
-          <td>${escapeHtml([item.veiculoModelo, item.veiculoPlaca].filter(Boolean).join(' · ') || '-')}</td>
-          <td><span class="badge ${getStatusBadgeClass(item.status)}">${escapeHtml(item.status || '')}</span></td>
-          <td><button class="btn secondary" style="padding:6px 14px;font-size:13px;" onclick="openSinistroModal(${item.id})">Ver detalhes</button></td>
-        </tr>
-      `).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Nenhum sinistro de terceiro encontrado.</td></tr>';
-    }
+function sinistroTabsForRole() {
+  if (currentRole === 'vendedor') {
+    return [
+      { id: 'devolvidos', label: 'Devolvidos pelo agente', attn: true,
+        hint: 'O agente pediu ajustes ou documentos. Corrija, anexe o que faltar e reenvie.',
+        empty: 'Nenhum sinistro devolvido. Tudo certo por aqui.',
+        match: s => s.status === 'Aguardando documentos' },
+      { id: 'rascunhos', label: 'Rascunhos',
+        hint: 'Salvos, mas ainda não enviados ao agente de sinistro.',
+        empty: 'Nenhum rascunho.',
+        match: s => s.status === 'Rascunho' },
+      { id: 'enviados', label: 'Enviados',
+        hint: 'Já estão com o agente de sinistro.',
+        empty: 'Nenhum sinistro enviado em andamento.',
+        match: () => true },
+      { id: 'finalizados', label: 'Finalizados', hint: 'Sinistros encerrados.', empty: 'Nenhum sinistro finalizado.' }
+    ];
+  }
+  return [
+    { id: 'acomunicar', mode: 'adicionar', label: 'Recebidos para adicionar', attn: true,
+      hint: 'Enviados pelos vendedores e ainda não comunicados. Assuma, confira os documentos, comunique no site da seguradora e registre o número.',
+      empty: 'Nenhum sinistro recebido para adicionar.',
+      match: s => !['Rascunho', 'Aguardando documentos'].includes(s.status) && !s.comunicadoAt && !s.numeroSinistro },
+    { id: 'aguardando', mode: 'acompanhar', label: 'Aguardando documentos',
+      hint: 'Devolvidos ao vendedor ou pendentes do cliente.',
+      empty: 'Nenhum sinistro aguardando documentos.',
+      match: s => s.status === 'Aguardando documentos' },
+    { id: 'andamento', mode: 'acompanhar', label: 'Em andamento',
+      hint: 'Já comunicados à seguradora e em acompanhamento.',
+      empty: 'Nenhum sinistro em andamento.',
+      match: () => true },
+    { id: 'finalizados', mode: 'acompanhar', label: 'Finalizados', hint: 'Sinistros encerrados.', empty: 'Nenhum sinistro finalizado.' }
+  ];
+}
+
+function classifySinistro(item, tabs) {
+  if (item.isFinalizado) return 'finalizados';
+  const tab = tabs.find(t => t.match && t.match(item));
+  return tab ? tab.id : tabs[0].id;
+}
+
+async function loadSinistros() {
+  try {
+    const [active, finalized] = await Promise.all([
+      apiFetch('/sinistros'),
+      apiFetch('/sinistros?finalized=true')
+    ]);
+    sinistrosCache = [...(active || []), ...(finalized || [])];
+    renderSinistros();
   } catch (error) {
     if (isAccessDeniedError(error)) return;
     console.warn('Sinistros load failed:', error);
   }
+}
+
+function selectSinistroMode(mode) {
+  sinistroMode = mode;
+  sinistroTab = null;
+  renderSinistros();
+}
+
+function selectSinistroEnvolvido(tipo) {
+  sinistroEnvolvido = tipo;
+  renderSinistros();
+}
+
+function selectSinistroTab(tabId) {
+  sinistroTab = tabId;
+  renderSinistros();
+}
+
+function sinistroOrigemLabel(item) {
+  if (currentRole === 'vendedor') {
+    return item.origem === 'vendedor' ? 'Criado por você' : 'Aberto pelo agente';
+  }
+  return item.origem === 'vendedor' ? `Vendedor${item.seller ? ' (' + item.seller + ')' : ''}` : 'Agente';
+}
+
+function renderSinistros() {
+  const tbody = document.querySelector('#sinistrosTable tbody');
+  const tabsEl = document.getElementById('sinistroTabs');
+  if (!tbody || !tabsEl) return;
+
+  const allTabs = sinistroTabsForRole();
+  const groups = {};
+  allTabs.forEach(t => { groups[t.id] = []; });
+  sinistrosCache.forEach(item => {
+    const id = classifySinistro(item, allTabs);
+    (groups[id] || groups[allTabs[0].id]).push(item);
+  });
+
+  // Agente: duas visões. "Adicionar" (recebidos + cadastro) e "Acompanhar" (já comunicados).
+  const isAgent = currentRole === 'sinistro';
+  const tabs = isAgent ? allTabs.filter(t => t.mode === sinistroMode) : allTabs;
+
+  const modesEl = document.getElementById('sinistroModes');
+  if (modesEl) {
+    if (isAgent) {
+      const nAdd = groups.acomunicar.length;
+      const nAcomp = allTabs.filter(t => t.mode === 'acompanhar' && t.id !== 'finalizados')
+        .reduce((sum, t) => sum + groups[t.id].length, 0);
+      modesEl.style.display = 'flex';
+      modesEl.innerHTML = `
+        <button type="button" class="sin-mode ${sinistroMode === 'adicionar' ? 'active' : ''}${nAdd > 0 ? ' attn' : ''}" onclick="selectSinistroMode('adicionar')">Adicionar sinistro<span class="sin-count">${nAdd}</span></button>
+        <button type="button" class="sin-mode ${sinistroMode === 'acompanhar' ? 'active' : ''}" onclick="selectSinistroMode('acompanhar')">Acompanhar sinistro<span class="sin-count">${nAcomp}</span></button>`;
+    } else {
+      modesEl.style.display = 'none';
+    }
+  }
+  const formGrid = document.getElementById('sinistroFormGrid');
+  if (formGrid && isAgent) formGrid.style.display = sinistroMode === 'adicionar' ? '' : 'none';
+
+  if (!sinistroTab || !groups[sinistroTab]) {
+    const firstWithItems = tabs.find(t => t.id !== 'finalizados' && groups[t.id].length > 0);
+    sinistroTab = (firstWithItems || tabs[0]).id;
+  }
+
+  tabsEl.style.display = tabs.length > 1 ? '' : 'none';
+  tabsEl.innerHTML = tabs.map(t => {
+    const n = groups[t.id].length;
+    const classes = ['sin-tab'];
+    if (t.id === sinistroTab) classes.push('active');
+    if (t.attn && n > 0) classes.push('attn');
+    return `<button type="button" class="${classes.join(' ')}" onclick="selectSinistroTab('${t.id}')">${escapeHtml(t.label)}<span class="sin-count">${n}</span></button>`;
+  }).join('');
+
+  const current = tabs.find(t => t.id === sinistroTab);
+  const titleEl = document.getElementById('sinistrosTableTitle');
+  if (titleEl) titleEl.textContent = current.label;
+  const hintEl = document.getElementById('sinistrosTableHint');
+  if (hintEl) hintEl.textContent = current.hint || '';
+
+  let rows = groups[sinistroTab];
+
+  // Agente, em Acompanhar: separa sinistro de segurado e de terceiro
+  const envBar = document.getElementById('sinistroEnvolvidoBar');
+  const splitByEnvolvido = isAgent && sinistroMode === 'acompanhar';
+  if (splitByEnvolvido) {
+    const isTerc = item => item.tipoEnvolvido === 'terceiro';
+    const nSeg = rows.filter(item => !isTerc(item)).length;
+    const nTerc = rows.length - nSeg;
+    rows = rows.filter(item => (sinistroEnvolvido === 'terceiro') === isTerc(item));
+    if (envBar) {
+      envBar.style.display = 'flex';
+      envBar.innerHTML = `
+        <button type="button" class="sin-pill ${sinistroEnvolvido === 'segurado' ? 'active' : ''}" onclick="selectSinistroEnvolvido('segurado')">Segurado<span class="sin-count">${nSeg}</span></button>
+        <button type="button" class="sin-pill ${sinistroEnvolvido === 'terceiro' ? 'active' : ''}" onclick="selectSinistroEnvolvido('terceiro')">Terceiro<span class="sin-count">${nTerc}</span></button>`;
+    }
+  } else if (envBar) {
+    envBar.style.display = 'none';
+  }
+
+  const showReason = currentRole === 'vendedor' && sinistroTab === 'devolvidos';
+  tbody.innerHTML = rows.length ? rows.map(item => `
+    <tr>
+      <td>
+        ${escapeHtml(item.client || '')}
+        ${showReason && item.motivoPendencia ? `<div class="sin-reason">${escapeHtml(item.motivoPendencia)}</div>` : ''}
+      </td>
+      <td>${escapeHtml(item.numeroSinistro || item.protocol || '-')}</td>
+      <td>${escapeHtml(item.tipoEnvolvido === 'terceiro' ? 'Terceiro' : (item.type || '-'))}</td>
+      <td>${escapeHtml(sinistroOrigemLabel(item))}</td>
+      <td><span class="badge ${getStatusBadgeClass(item.status)}">${escapeHtml(item.status || '')}</span></td>
+      <td><button class="btn secondary" style="padding:6px 14px;font-size:13px;" onclick="openSinistroModal(${item.id})">Ver detalhes</button></td>
+    </tr>
+  `).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">${escapeHtml(current.empty || 'Nada por aqui.')}</td></tr>`;
 }
 
 function getStatusBadgeClass(status) {
@@ -1272,6 +1384,9 @@ function getStatusBadgeClass(status) {
     'Em andamento': 'blue',
     'Aguardando vistoria': 'amber',
     'Aguardando documentos': 'amber',
+    'Rascunho': 'gray',
+    'Aguardando agente': 'amber',
+    'Comunicado à seguradora': 'blue',
     'Em análise': 'blue',
     'Aguardando peças': 'amber',
     'Em reparo': 'blue',
@@ -1464,6 +1579,62 @@ async function createProposal(event, sendToEmissao = true) {
   }
 }
 
+// Seguro novo: vendedor cria proposta sem indicação/renovação e manda direto para a emissão
+async function createNovoSeguro(event, sendToEmissao) {
+  event.preventDefault();
+  const btn = event.target;
+  const val = id => document.getElementById(id)?.value.trim() || '';
+  const client = val('nsClient');
+  const cpf = val('nsCpf');
+  const insurer = val('nsInsurer');
+  const type = val('nsType');
+
+  if (!client || !cpf || !insurer || !type) {
+    showErrorNotification('Preencha cliente, CPF, seguradora e tipo de seguro.');
+    return;
+  }
+  if (onlyDigits(cpf).length !== 11) {
+    showErrorNotification('CPF inválido: informe os 11 números.');
+    return;
+  }
+
+  setLoadingState(btn, true);
+  try {
+    const formData = new FormData();
+    formData.append('client', client);
+    formData.append('cpf', cpf);
+    formData.append('insurer', insurer);
+    formData.append('type', type);
+    formData.append('notes', val('nsNotes'));
+    ['nsFirstDue:firstDueDate', 'nsStart:start', 'nsEnd:end'].forEach(pair => {
+      const [id, field] = pair.split(':');
+      const v = val(id);
+      if (v) formData.append(field, v);
+    });
+    const pdfFile = document.getElementById('nsPdf')?.files[0];
+    if (pdfFile) formData.append('pdf', pdfFile);
+
+    const prop = await apiFetch('/propostas', { method: 'POST', body: formData });
+    if (sendToEmissao && prop.id) {
+      await apiFetch(`/propostas/${prop.id}/send`, { method: 'POST', body: JSON.stringify({}) });
+    }
+
+    ['nsClient', 'nsCpf', 'nsNotes', 'nsFirstDue', 'nsStart', 'nsEnd', 'nsPdf'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    document.getElementById('nsInsurer').value = '';
+
+    showSuccessNotification(sendToEmissao ? 'Proposta enviada para a fila de emissão.' : 'Proposta salva em elaboração. Envie depois em Seguros.');
+    await Promise.all([loadDashboard(), loadProposalQueue(), loadSeguros()]);
+    showScreen('seguros');
+  } catch (error) {
+    showErrorNotification(`Erro: ${error.message}`);
+  } finally {
+    setLoadingState(btn, false);
+  }
+}
+
 async function sendProposal(proposalId) {
   try {
     await apiFetch(`/propostas/${proposalId}/send`, { method: 'POST', body: JSON.stringify({}) });
@@ -1647,6 +1818,17 @@ async function createClaim(event) {
   const sinistroDate = isTerceiro ? '' : (document.getElementById('claimSinistroDate')?.value || '');
   const avisoDate = isTerceiro ? '' : (document.getElementById('claimAvisoDate')?.value || '');
   const status = isTerceiro ? 'Em andamento' : (document.getElementById('claimStatus')?.value || 'Em andamento');
+  const requiredDocs = [
+    { key: 'B.O.', input: document.getElementById('claimDocBo') },
+    { key: 'CNH', input: document.getElementById('claimDocCnh') },
+    { key: 'CRLV', input: document.getElementById('claimDocCrlv') }
+  ];
+  const missingDocs = requiredDocs.filter(doc => !doc.input || !doc.input.files || doc.input.files.length === 0);
+  
+  if (missingDocs.length) {
+    showErrorNotification(`Anexe a documentação obrigatória antes de registrar: ${missingDocs.map(doc => doc.key).join(', ')}.`);
+    return;
+  }
   
   const prefix = isTerceiro ? 'claimTerceiro' : 'claimSegurado';
   const client = document.getElementById(`${prefix}Nome`)?.value.trim() || '';
@@ -1657,7 +1839,7 @@ async function createClaim(event) {
   const veiculoPlaca = document.getElementById(`${prefix}VeiculoPlaca`)?.value.trim() || '';
   
   const missingSeguradoData = !isTerceiro && (!policyNumber || !insurer || !type);
-  const missingPersonData = !client || !cpf || !numeroSinistro || !veiculoModelo || !veiculoPlaca;
+  const missingPersonData = !client || !cpf || !veiculoModelo || !veiculoPlaca;
 
   if (missingSeguradoData || missingPersonData) {
     showErrorNotification('Preencha todos os campos obrigatórios (*).');
@@ -1667,7 +1849,7 @@ async function createClaim(event) {
   setLoadingState(btn, true);
   
   try {
-    await apiFetch('/sinistros', {
+    const createdClaim = await apiFetch('/sinistros', {
       method: 'POST',
       body: JSON.stringify({ 
         policyNumber,
@@ -1683,9 +1865,19 @@ async function createClaim(event) {
         veiculoModelo,
         veiculoPlaca,
         tipoEnvolvido,
-        status
+        status,
+        documentacao: requiredDocs.map(doc => doc.key)
       })
     });
+
+    const claimId = createdClaim?.id || createdClaim?.sinistroId || createdClaim?.idSinistro;
+    if (claimId) {
+      for (const doc of requiredDocs) {
+        const file = doc.input?.files?.[0];
+        if (!file) continue;
+        await uploadSinistroDocument(claimId, file, doc.key);
+      }
+    }
     
     [
       'claimPolicy', 'claimInsurer', 'claimType', 'claimDescription',
@@ -1693,7 +1885,8 @@ async function createClaim(event) {
       'claimSeguradoNome', 'claimSeguradoCpf', 'claimSeguradoVeiculoModelo',
       'claimSeguradoVeiculoPlaca', 'claimSeguradoOficina', 'claimSeguradoNumeroSinistro',
       'claimTerceiroNome', 'claimTerceiroCpf', 'claimTerceiroVeiculoModelo',
-      'claimTerceiroVeiculoPlaca', 'claimTerceiroOficina', 'claimTerceiroNumeroSinistro'
+      'claimTerceiroVeiculoPlaca', 'claimTerceiroOficina', 'claimTerceiroNumeroSinistro',
+      'claimDocBo', 'claimDocCnh', 'claimDocCrlv'
     ].forEach(id => {
       const input = document.getElementById(id);
       if (input) input.value = '';
@@ -1823,6 +2016,136 @@ async function logout() {
 let currentSinistroId = null;
 let currentSinistroData = null;
 
+function sinistroSummaryText(data) {
+  const docs = (data.attachments || []).map(a => a.fileType || a.originalName).filter(Boolean);
+  const linhas = [
+    `SINISTRO ${data.protocol || ''}`.trim(),
+    `Segurado: ${data.client || '-'}  |  CPF: ${data.cpf || '-'}`,
+    `Apólice: ${data.policyNumber || '-'}  |  Seguradora: ${data.insurer || '-'}`,
+    `Tipo de sinistro: ${data.type || '-'}`,
+    `Data do ocorrido: ${data.sinistroDate || '-'}`,
+    `Veículo: ${[data.veiculoModelo, data.veiculoPlaca].filter(Boolean).join(' - ') || '-'}`,
+    `Descrição: ${data.description || '-'}`
+  ];
+  if (data.observacoesVendedor) linhas.push(`Observações do vendedor: ${data.observacoesVendedor}`);
+  linhas.push(`Documentos anexados: ${docs.length ? docs.join(', ') : 'nenhum'}`);
+  return linhas.join('\n');
+}
+
+async function copySinistroSummary() {
+  const area = document.getElementById('sinistroSummary');
+  if (!area) return;
+  try {
+    await navigator.clipboard.writeText(area.value);
+  } catch (e) {
+    area.select();
+    document.execCommand('copy');
+  }
+  showSuccessNotification('Resumo copiado. Cole no site da seguradora.');
+}
+
+function renderSinistroWorkflowActions(data) {
+  const container = document.getElementById('sinistroWorkflowActions');
+  if (!container) return;
+
+  const status = String(data.status || '');
+  const currentUsername = localStorage.getItem('seguraTechUsername') || '';
+  const isSellerOwner = currentRole === 'vendedor' && String(data.seller || '') === currentUsername;
+  const isAgent = currentRole === 'sinistro';
+  let html = '';
+
+  if (data.isFinalizado) {
+    html = '';
+  } else if (isSellerOwner) {
+    if (status === 'Rascunho') {
+      html = `
+        <div class="sin-flow">
+          <p class="sin-flow-text">Este sinistro ainda é um rascunho. Confira os dados, anexe os documentos e envie ao agente de sinistro, que faz a comunicação na seguradora.</p>
+          <button class="btn primary" type="button" onclick="sendSinistroToAgent()">Enviar ao agente de sinistro</button>
+        </div>`;
+    } else if (status === 'Aguardando documentos') {
+      html = `
+        <div class="sin-flow">
+          <div class="sin-alert">
+            <strong>O agente devolveu este sinistro.</strong>
+            <div>${escapeHtml(data.motivoPendencia || 'Verifique os documentos e os dados.')}</div>
+          </div>
+          <p class="sin-flow-text">Use Editar e Selecionar arquivo para corrigir ou anexar o que faltou, depois reenvie.</p>
+          <button class="btn primary" type="button" onclick="sendSinistroToAgent()">Reenviar ao agente</button>
+        </div>`;
+    } else if (status === 'Aguardando agente') {
+      html = `<p class="sin-flow-text">Enviado ao agente${data.enviadoAt ? ' em ' + escapeHtml(formatDateTime(data.enviadoAt)) : ''}. Aguardando ele assumir.</p>`;
+    } else {
+      html = `<p class="sin-flow-text">O agente de sinistro está cuidando deste sinistro.${data.numeroSinistro ? ' Número na seguradora: <strong>' + escapeHtml(data.numeroSinistro) + '</strong>.' : ''}</p>`;
+    }
+  } else if (isAgent) {
+    const summary = `
+      <div class="field">
+        <label>Resumo para a seguradora</label>
+        <textarea id="sinistroSummary" rows="8" readonly>${escapeHtml(sinistroSummaryText(data))}</textarea>
+        <button class="btn secondary" type="button" onclick="copySinistroSummary()" style="margin-top:8px;">Copiar resumo</button>
+      </div>`;
+
+    if (status === 'Aguardando agente') {
+      html = `
+        <div class="sin-flow">
+          <p class="sin-flow-text">Enviado pelo vendedor ${escapeHtml(data.sellerName || data.seller || '')}${data.enviadoAt ? ' em ' + escapeHtml(formatDateTime(data.enviadoAt)) : ''}. Assuma para conferir os documentos e comunicar.</p>
+          <button class="btn primary" type="button" onclick="assumirSinistro()">Assumir sinistro</button>
+        </div>`;
+    } else if (status === 'Aguardando documentos') {
+      html = `
+        <div class="sin-flow">
+          <div class="sin-alert">
+            <strong>Aguardando documentos.</strong>
+            <div>${escapeHtml(data.motivoPendencia || 'Sem motivo registrado.')}</div>
+          </div>
+          <p class="sin-flow-text">Quando o vendedor reenviar, o sinistro volta para "A comunicar".</p>
+        </div>`;
+    } else if (!data.comunicadoAt) {
+      html = `
+        <div class="sin-flow">
+          ${summary}
+          <div class="field">
+            <label>Número do sinistro na seguradora</label>
+            <input id="sinistroNumeroSeguradora" value="${escapeAttribute(data.numeroSinistro || '')}" placeholder="Ex: SIN-2026-000123" />
+            <button class="btn primary" type="button" onclick="comunicarSinistro()" style="margin-top:8px;">Registrar comunicação à seguradora</button>
+          </div>
+          <div class="field">
+            <label>Faltou algo? Devolver ao vendedor</label>
+            <textarea id="sinistroPendenciaMotivo" rows="2" placeholder="Ex: Falta o B.O. e a CNH do segurado."></textarea>
+            <button class="btn secondary" type="button" onclick="pendenciaSinistro()" style="margin-top:8px;">Devolver ao vendedor</button>
+          </div>
+        </div>`;
+    } else {
+      html = `
+        <div class="sin-flow">
+          <p class="sin-flow-text">Comunicado à seguradora${data.comunicadoAt ? ' em ' + escapeHtml(formatDateTime(data.comunicadoAt)) : ''}. Número: <strong>${escapeHtml(data.numeroSinistro || '-')}</strong>.</p>
+          ${summary}
+        </div>`;
+    }
+  }
+
+  container.style.display = html ? 'block' : 'none';
+  container.innerHTML = html;
+}
+
+function applySinistroModalPermissions(data) {
+  const isSeller = currentRole === 'vendedor';
+  const final = Boolean(data.isFinalizado);
+  const status = String(data.status || '');
+  const sellerEditable = isSeller && !final && ['Rascunho', 'Aguardando documentos'].includes(status);
+  const show = (id, on) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = on ? '' : 'none';
+  };
+  show('btnEditarSinistro', isSeller ? sellerEditable : true);
+  show('btnExcluirSinistro', !isSeller);
+  show('btnFinalizarSinistro', !isSeller && !final && !['Rascunho', 'Aguardando agente'].includes(status));
+  show('sinistroStatusCard', !isSeller && !final && !['Rascunho', 'Aguardando agente'].includes(status));
+  show('historyAddField', !isSeller);
+  show('attachUploadField', isSeller ? sellerEditable : true);
+}
+
 async function openSinistroModal(sinistroId) {
   currentSinistroId = sinistroId;
   const modal = document.getElementById('sinistroModal');
@@ -1833,7 +2156,7 @@ async function openSinistroModal(sinistroId) {
     
     // Preencher informações gerais
     document.getElementById('modalProtocol').textContent = data.protocol || '-';
-    document.getElementById('modalStatus').innerHTML = `<span class="badge ${getBadgeClass(data.status)}">${escapeHtml(data.status || '-')}</span>`;
+    document.getElementById('modalStatus').innerHTML = `<span class="badge ${getStatusBadgeClass(data.status)}">${escapeHtml(data.status || '-')}</span>`;
     document.getElementById('modalTipoEnvolvido').textContent = data.tipoEnvolvido === 'terceiro' ? 'Terceiro' : 'Segurado';
     document.getElementById('modalNome').textContent = data.client || '-';
     document.getElementById('modalCpf').textContent = data.cpf || '-';
@@ -1860,6 +2183,9 @@ async function openSinistroModal(sinistroId) {
     // Renderizar anexos
     renderAttachments(data.attachments || []);
     
+    // Workflow de negócio por papel
+    renderSinistroWorkflowActions(data);
+    
     // Atualizar select de status
     const statusSelect = document.getElementById('sinistroStatusSelect');
     if (statusSelect) {
@@ -1872,9 +2198,172 @@ async function openSinistroModal(sinistroId) {
       btnFinalizar.style.display = data.status === 'Finalizado' ? 'none' : 'inline-block';
     }
     
+    applySinistroModalPermissions(data);
     modal.style.display = 'flex';
   } catch (error) {
     showErrorNotification('Erro ao carregar detalhes do sinistro.');
+  }
+}
+
+async function sendSinistroToAgent() {
+  if (!currentSinistroId) return;
+
+  try {
+    await apiFetch(`/sinistros/${currentSinistroId}/enviar`, { method: 'POST', body: JSON.stringify({}) });
+    showSuccessNotification('Sinistro enviado ao agente do sinistro.');
+    await openSinistroModal(currentSinistroId);
+    await loadSinistros(false);
+  } catch (error) {
+    showErrorNotification(`Erro: ${error.message}`);
+  }
+}
+
+async function assumirSinistro() {
+  if (!currentSinistroId) return;
+
+  try {
+    await apiFetch(`/sinistros/${currentSinistroId}/assumir`, { method: 'POST', body: JSON.stringify({}) });
+    showSuccessNotification('Sinistro assumido pela equipe de sinistros.');
+    await openSinistroModal(currentSinistroId);
+    await loadSinistros(false);
+  } catch (error) {
+    showErrorNotification(`Erro: ${error.message}`);
+  }
+}
+
+async function pendenciaSinistro() {
+  if (!currentSinistroId) return;
+
+  const motivo = document.getElementById('sinistroPendenciaMotivo')?.value.trim() || '';
+  if (!motivo) {
+    showErrorNotification('Informe o motivo da pendência antes de registrar.');
+    return;
+  }
+
+  try {
+    await apiFetch(`/sinistros/${currentSinistroId}/pendencia`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo })
+    });
+    showSuccessNotification('Pendência registrada com sucesso.');
+    document.getElementById('sinistroPendenciaMotivo').value = '';
+    await openSinistroModal(currentSinistroId);
+    await loadSinistros(false);
+  } catch (error) {
+    showErrorNotification(`Erro: ${error.message}`);
+  }
+}
+
+async function comunicarSinistro() {
+  if (!currentSinistroId) return;
+
+  const numeroSinistro = document.getElementById('sinistroNumeroSeguradora')?.value.trim() || '';
+  if (!numeroSinistro) {
+    showErrorNotification('Informe o número do sinistro na seguradora.');
+    return;
+  }
+
+  try {
+    await apiFetch(`/sinistros/${currentSinistroId}/comunicar`, {
+      method: 'POST',
+      body: JSON.stringify({ numeroSinistro })
+    });
+    showSuccessNotification('Sinistro comunicado à seguradora. Ele agora está em Acompanhar sinistro.');
+    sinistroMode = 'acompanhar';
+    sinistroTab = 'andamento';
+    await openSinistroModal(currentSinistroId);
+    await loadSinistros(false);
+  } catch (error) {
+    showErrorNotification(`Erro: ${error.message}`);
+  }
+}
+
+// Formulário do vendedor: cria rascunho (e, se pedir, já envia ao agente)
+async function createClaimVendedor(event, enviar) {
+  event.preventDefault();
+  const buttons = Array.from(document.querySelectorAll('#claimCardVendedor .form-footer button'));
+  const val = id => (document.getElementById(id)?.value || '').trim();
+
+  const client = val('vClaimNome');
+  const cpf = val('vClaimCpf');
+  const description = val('vClaimDescription');
+  const sinistroDate = val('vClaimDate');
+  if (!client || !cpf) {
+    showErrorNotification('Informe o nome e o CPF do cliente.');
+    return;
+  }
+
+  const docInputs = [
+    ['vDocBo', 'B.O.'], ['vDocCnh', 'CNH'], ['vDocCrlv', 'CRLV'],
+    ['vDocFotos', 'Fotos'], ['vDocOutros', 'Outros']
+  ];
+  const files = [];
+  docInputs.forEach(([id, label]) => {
+    Array.from(document.getElementById(id)?.files || []).forEach(file => files.push({ file, label }));
+  });
+  const tooBig = files.find(item => item.file.size > 10 * 1024 * 1024);
+  if (tooBig) {
+    showErrorNotification(`O arquivo "${tooBig.file.name}" passa de 10 MB.`);
+    return;
+  }
+  if (enviar) {
+    if (!description || !sinistroDate) {
+      showErrorNotification('Para enviar ao agente, preencha a data do ocorrido e a descrição.');
+      return;
+    }
+    if (!files.length) {
+      showErrorNotification('Anexe ao menos um documento antes de enviar ao agente.');
+      return;
+    }
+  }
+
+  const phone = val('vClaimPhone');
+  const obs = [phone ? `Telefone do cliente: ${phone}` : '', val('vClaimObs')].filter(Boolean).join('\n');
+
+  buttons.forEach(b => setLoadingState(b, true));
+  let createdId = null;
+  try {
+    const created = await apiFetch('/sinistros', {
+      method: 'POST',
+      body: JSON.stringify({
+        policyNumber: val('vClaimPolicy'),
+        client,
+        cpf,
+        type: val('vClaimType'),
+        description,
+        sinistroDate,
+        veiculoModelo: val('vClaimVeiculoModelo'),
+        veiculoPlaca: val('vClaimVeiculoPlaca'),
+        observacoesVendedor: obs
+      })
+    });
+    createdId = created?.id;
+    for (const item of files) {
+      await uploadSinistroDocument(createdId, item.file, item.label);
+    }
+    if (enviar) {
+      await apiFetch(`/sinistros/${createdId}/enviar`, { method: 'POST', body: JSON.stringify({}) });
+    }
+
+    [
+      'vClaimNome', 'vClaimCpf', 'vClaimPhone', 'vClaimPolicy', 'vClaimType', 'vClaimDate',
+      'vClaimVeiculoModelo', 'vClaimVeiculoPlaca', 'vClaimDescription', 'vClaimObs',
+      'vDocBo', 'vDocCnh', 'vDocCrlv', 'vDocFotos', 'vDocOutros'
+    ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+
+    sinistroTab = enviar ? 'enviados' : 'rascunhos';
+    showSuccessNotification(enviar ? 'Sinistro enviado ao agente de sinistro.' : 'Rascunho salvo.');
+    await Promise.all([loadSinistros(), loadSinistroChart()]);
+  } catch (error) {
+    if (createdId) {
+      sinistroTab = 'rascunhos';
+      showErrorNotification(`O rascunho foi salvo, mas houve um problema: ${error.message} Abra-o em Rascunhos para concluir.`);
+      await loadSinistros();
+    } else {
+      showErrorNotification(`Erro: ${error.message}`);
+    }
+  } finally {
+    buttons.forEach(b => setLoadingState(b, false));
   }
 }
 
@@ -1899,6 +2388,8 @@ function openEditSinistroModal() {
   document.getElementById('editSinistroDate').value = currentSinistroData.sinistroDate || '';
   document.getElementById('editAvisoDate').value = currentSinistroData.avisoDate || '';
   document.getElementById('editSinistroDescription').value = currentSinistroData.description || '';
+  const numeroField = document.getElementById('editSinistroNumeroField');
+  if (numeroField) numeroField.style.display = currentRole === 'vendedor' ? 'none' : '';
   document.getElementById('editSinistroModal').style.display = 'flex';
 }
 
@@ -1922,8 +2413,8 @@ async function saveSinistroEdit() {
     description: document.getElementById('editSinistroDescription').value.trim()
   };
 
-  if (!payload.client || !payload.numeroSinistro) {
-    showErrorNotification('Informe pelo menos nome e número do sinistro.');
+  if (!payload.client) {
+    showErrorNotification('Informe o nome do cliente.');
     return;
   }
 
@@ -1994,8 +2485,8 @@ function renderAttachments(attachments) {
       <div class="attachment-info">
         <div class="attachment-icon">📄</div>
         <div class="attachment-details">
-          <div class="attachment-name">${escapeHtml(item.originalName)}</div>
-          <div class="attachment-meta">Enviado em ${formatDateTime(item.uploadedAt)} por ${escapeHtml(item.uploadedBy)}</div>
+          <div class="attachment-name">${escapeHtml(item.fileType || 'Documento anexo')}</div>
+          <div class="attachment-meta">${escapeHtml(item.originalName)} · Enviado em ${formatDateTime(item.uploadedAt)} por ${escapeHtml(item.uploadedBy)}</div>
         </div>
       </div>
       <div class="attachment-actions">
@@ -2033,6 +2524,26 @@ async function addHistoryEvent() {
   }
 }
 
+async function uploadSinistroDocument(sinistroId, file, docLabel) {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (docLabel) formData.append('documentType', docLabel);
+
+  const headers = {};
+  if (authToken) headers['x-auth-token'] = authToken;
+
+  const response = await fetch(`${API_BASE}/sinistros/${sinistroId}/attachments`, {
+    method: 'POST',
+    headers,
+    body: formData
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.message || `Erro ao enviar ${docLabel || 'arquivo'}`);
+  }
+}
+
 async function uploadAttachment() {
   if (!currentSinistroId) return;
   
@@ -2041,27 +2552,11 @@ async function uploadAttachment() {
   
   if (!file) return;
   
-  const formData = new FormData();
-  formData.append('file', file);
-  
   try {
-    const headers = {};
-    if (authToken) headers['x-auth-token'] = authToken;
-    
-    const response = await fetch(`${API_BASE}/sinistros/${currentSinistroId}/attachments`, {
-      method: 'POST',
-      headers: headers,
-      body: formData
-    });
-    
-    if (!response.ok) {
-      throw new Error('Erro ao enviar arquivo');
-    }
-    
+    await uploadSinistroDocument(currentSinistroId, file, 'Anexo');
     fileInput.value = '';
     showSuccessNotification('Arquivo anexado com sucesso.');
     
-    // Recarregar detalhes
     const data = await apiFetch(`/sinistros/${currentSinistroId}`);
     renderAttachments(data.attachments || []);
   } catch (error) {
@@ -2245,3 +2740,81 @@ async function seguEnviar() {
     input?.focus();
   }
 }
+// ─────────────────────────────────────────────
+// Máscaras (CPF, telefone) e vigência automática
+// ─────────────────────────────────────────────
+function onlyDigits(v) { return String(v || '').replace(/\D/g, ''); }
+
+function formatCpf(v) {
+  const d = onlyDigits(v).slice(0, 11);
+  return d
+    .replace(/^(\d{3})(\d)/, '$1.$2')
+    .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4');
+}
+
+// (53) 99999-9999, ou +55 (53) 99999-9999 quando digitado com DDI
+function formatPhone(v) {
+  let d = onlyDigits(v).slice(0, 13);
+  let prefix = '';
+  if (d.length >= 12 && d.startsWith('55')) { prefix = '+55 '; d = d.slice(2); }
+  if (d.length === 0) return '';
+  if (d.length <= 2) return `${prefix}(${d}`;
+  const ddd = d.slice(0, 2);
+  const rest = d.slice(2);
+  if (rest.length <= 4) return `${prefix}(${ddd}) ${rest}`;
+  if (d.length <= 10) return `${prefix}(${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+  return `${prefix}(${ddd}) ${rest.slice(0, 5)}-${rest.slice(5, 9)}`;
+}
+
+function isCpfField(el) { return el && el.tagName === 'INPUT' && /cpf/i.test(el.id || ''); }
+function isPhoneField(el) { return el && el.tagName === 'INPUT' && /phone/i.test(el.id || ''); }
+
+document.addEventListener('focusin', event => {
+  const el = event.target;
+  if (isCpfField(el)) { el.maxLength = 14; el.inputMode = 'numeric'; el.autocomplete = 'off'; }
+  if (isPhoneField(el)) { el.maxLength = 19; el.inputMode = 'tel'; }
+});
+
+document.addEventListener('input', event => {
+  const el = event.target;
+  if (isCpfField(el)) el.value = formatCpf(el.value);
+  else if (isPhoneField(el)) el.value = formatPhone(el.value);
+  else if (el && el.dataset && el.dataset.vigenciaEnd === undefined && VIGENCIA_END_IDS.has(el.id)) {
+    el.dataset.manual = '1'; // o usuário mexeu no fim da vigência: não sobrescrever
+  }
+});
+
+// Início da vigência -> fim automático (+1 ano, mesmo dia/mês)
+const VIGENCIA_PAIRS = {
+  renewalStart: 'renewalEnd',
+  renewSaleStart: 'renewSaleEnd',
+  nsStart: 'nsEnd',
+  saleStart: 'saleEnd',
+  editPropStart: 'editPropEnd'
+};
+const VIGENCIA_END_IDS = new Set(Object.values(VIGENCIA_PAIRS));
+
+function addOneYear(isoDate) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate || '');
+  if (!m) return '';
+  const year = Number(m[1]) + 1;
+  let month = m[2];
+  let day = m[3];
+  if (month === '02' && day === '29') day = '28'; // ano seguinte não é bissexto
+  return `${year}-${month}-${day}`;
+}
+
+document.addEventListener('change', event => {
+  const el = event.target;
+  const endId = VIGENCIA_PAIRS[el && el.id];
+  if (!endId) return;
+  const endEl = document.getElementById(endId);
+  if (!endEl) return;
+  const next = addOneYear(el.value);
+  if (!next) return;
+  if (!endEl.value || endEl.dataset.manual !== '1') {
+    endEl.value = next;
+    delete endEl.dataset.manual;
+  }
+});

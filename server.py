@@ -74,6 +74,51 @@ def db_run(sql, params=()):
 
 PROPOSTAS_UPLOAD = os.path.join(os.path.dirname(__file__), 'uploads', 'propostas')
 POLICIES_UPLOAD = os.path.join(os.path.dirname(__file__), 'uploads', 'policies')
+# Dados de demonstração (apólices, indicações, propostas, sinistros) só entram com SEED_DEMO_DATA=1
+SEED_DEMO_DATA = os.environ.get('SEED_DEMO_DATA', '0') == '1'
+
+# ─────────────────────────────────────────────
+# Validações de CPF, telefone e vigência
+# ─────────────────────────────────────────────
+def only_digits(value):
+    return ''.join(ch for ch in str(value or '') if ch.isdigit())
+
+
+def cpf_error(cpf, required=True):
+    """Retorna mensagem de erro se o CPF não tiver exatamente 11 dígitos."""
+    digits = only_digits(cpf)
+    if not digits:
+        return 'Informe o CPF.' if required else None
+    if len(digits) != 11:
+        return 'CPF inválido: informe os 11 números.'
+    return None
+
+
+def phone_error(phone, required=True):
+    """Aceita DDD + número (10 ou 11 dígitos), com ou sem DDI 55 (12 ou 13 dígitos)."""
+    digits = only_digits(phone)
+    if not digits:
+        return 'Informe o telefone.' if required else None
+    if len(digits) in (12, 13) and digits.startswith('55'):
+        digits = digits[2:]
+    if len(digits) not in (10, 11):
+        return 'Telefone inválido: use DDD + número, ex.: (53) 99999-9999.'
+    if len(digits) == 11 and digits[2] != '9':
+        return 'Telefone inválido: celular com 11 dígitos deve começar com 9 depois do DDD.'
+    return None
+
+
+def add_one_year(date_str):
+    """'2026-10-28' -> '2027-10-28' (29/02 vira 28/02). Retorna '' se a data for inválida."""
+    try:
+        d = datetime.strptime(str(date_str or '').strip(), '%Y-%m-%d')
+    except ValueError:
+        return ''
+    try:
+        return d.replace(year=d.year + 1).strftime('%Y-%m-%d')
+    except ValueError:
+        return d.replace(year=d.year + 1, day=28).strftime('%Y-%m-%d')
+
 
 
 def log_proposal_history(proposal_id, event, actor):
@@ -331,7 +376,7 @@ def init_db():
         )
 
     # Seed policies
-    if c.execute("SELECT COUNT(*) FROM policies").fetchone()[0] == 0:
+    if SEED_DEMO_DATA and c.execute("SELECT COUNT(*) FROM policies").fetchone()[0] == 0:
         c.executemany(
             "INSERT INTO policies (number,client,insurer,type,start,end,premium,status,seller) VALUES (?,?,?,?,?,?,?,?,?)",
             [
@@ -344,7 +389,7 @@ def init_db():
         )
 
     # Seed leads
-    if c.execute("SELECT COUNT(*) FROM leads").fetchone()[0] == 0:
+    if SEED_DEMO_DATA and c.execute("SELECT COUNT(*) FROM leads").fetchone()[0] == 0:
         c.executemany(
             "INSERT INTO leads (client,phone,source,status,owner,notes,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?)",
             [
@@ -357,7 +402,7 @@ def init_db():
         )
 
     # Seed proposals
-    if c.execute("SELECT COUNT(*) FROM proposals").fetchone()[0] == 0:
+    if SEED_DEMO_DATA and c.execute("SELECT COUNT(*) FROM proposals").fetchone()[0] == 0:
         c.executemany(
             "INSERT INTO proposals (policyNumber,client,cpf,insurer,type,seller,status,createdAt,notes,firstDueDate,pdfFilename,pdfOriginalName) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             [
@@ -369,7 +414,7 @@ def init_db():
         )
 
     # Seed sinistros
-    if c.execute("SELECT COUNT(*) FROM sinistros").fetchone()[0] == 0:
+    if SEED_DEMO_DATA and c.execute("SELECT COUNT(*) FROM sinistros").fetchone()[0] == 0:
         c.executemany(
             "INSERT INTO sinistros (policyNumber,client,cpf,insurer,type,status,openedAt,protocol,description,sinistroDate,avisoDate,oficina,seller,numeroSinistro,veiculoModelo,veiculoPlaca,tipoEnvolvido,isFinalizado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [
@@ -702,6 +747,9 @@ def api_create_lead():
 
     if not client or not phone or not notes:
         return jsonify(message='Informe nome, telefone e descrição da indicação.'), 400
+    err = phone_error(phone)
+    if err:
+        return jsonify(message=err), 400
 
     seller = db_get("SELECT username FROM users WHERE username=? AND role='vendedor'", (owner,))
     if not seller:
@@ -828,6 +876,11 @@ def api_propostas_post():
 
     if not client or not cpf or not insurer or not ptype:
         return jsonify(message='Informe cliente, CPF, seguradora e tipo de seguro.'), 400
+    err = cpf_error(cpf)
+    if err:
+        return jsonify(message=err), 400
+    if start and not end:
+        end = add_one_year(start)
 
     pdf_filename, pdf_original = None, None
     if pdf_file and pdf_file.filename:
@@ -885,6 +938,12 @@ def api_proposta_update(pid):
         start = str(data.get('start', prop.get('start') or '')).strip()
         end = str(data.get('end', prop.get('end') or '')).strip()
         pdf_file = None
+
+    err = cpf_error(cpf)
+    if err:
+        return jsonify(message=err), 400
+    if start and not end:
+        end = add_one_year(start)
 
     pdf_filename = prop.get('pdfFilename')
     pdf_original = prop.get('pdfOriginalName')
@@ -1132,6 +1191,9 @@ def api_policy_status(pid):
         end_date = str(data.get('end', policy.get('end') or '')).strip()
         if not phone:
             return jsonify(message='Informe telefone para a renovação.'), 400
+        err = phone_error(phone)
+        if err:
+            return jsonify(message=err), 400
         if not end_date:
             return jsonify(message='Informe a final de vigência para a renovação.'), 400
         db_run('UPDATE policies SET status=?, phone=?, end=?, returnReason=?, notes=? WHERE id=?', (status, phone, end_date, '', notes, pid))
@@ -1218,6 +1280,9 @@ def api_policy_upload(pid):
     if is_renewal:
         if not phone:
             return jsonify(message='Informe telefone para a renovação.'), 400
+        err = phone_error(phone)
+        if err:
+            return jsonify(message=err), 400
         if not end_date:
             return jsonify(message='Informe a final de vigência para a renovação.'), 400
         if u['role'] == 'vendedor':
@@ -1269,6 +1334,11 @@ def api_create_renewal():
 
     if not client or not cpf or not insurer:
         return jsonify(message='Informe cliente, CPF e seguradora.'), 400
+    err = cpf_error(cpf) or phone_error(phone)
+    if err:
+        return jsonify(message=err), 400
+    if start_date and not end_date:
+        end_date = add_one_year(start_date)
     if not phone:
         return jsonify(message='Informe telefone para a renovação.'), 400
     if not start_date:
@@ -1398,6 +1468,9 @@ def api_sinistros_post():
     if status is None:
         return jsonify(message='Status inválido para sinistro.'), 400
     is_terceiro = tipo_envolvido == 'terceiro'
+    err = cpf_error(cpf, required=False)
+    if err:
+        return jsonify(message=err), 400
     motivo_pendencia = ''
     if u['role'] == 'vendedor':
         # O servidor decide origem e status: o vendedor sempre começa em rascunho
@@ -1559,6 +1632,9 @@ def api_update_sinistro(sid):
 
     if not fields['client']:
         return jsonify(message='Informe o nome do cliente.'), 400
+    err = cpf_error(fields['cpf'], required=False)
+    if err:
+        return jsonify(message=err), 400
 
     db_run(
         """

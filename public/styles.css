@@ -275,6 +275,36 @@ img { max-width: 100%; height: auto; display: block; }
 
 .field textarea { resize: vertical; min-height: 88px; line-height: 1.5; }
 
+.upload-doc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.doc-upload-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.doc-upload-item label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.doc-upload-item input[type="file"] {
+  width: 100%;
+  padding: 6px 0;
+  color: var(--text-primary);
+}
+
 tbody select {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1387,3 +1417,49 @@ tbody tr:last-child td { border-bottom: none; }
   .stats-grid { grid-template-columns: 1fr; }
 }
 
+/* ── Sinistros: abas e fluxo vendedor/agente ── */
+.sin-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; border-bottom: 1px solid var(--border); }
+.sin-tab {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 14px; margin-bottom: -1px;
+  background: transparent; border: 0; border-bottom: 2px solid transparent;
+  color: var(--text-muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.sin-tab:hover { color: var(--text-primary); }
+.sin-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+.sin-count {
+  min-width: 22px; padding: 1px 7px; border-radius: 999px;
+  background: var(--gray-bg); color: var(--gray); font-size: 12px; text-align: center;
+}
+.sin-tab.attn .sin-count { background: var(--amber-bg); color: var(--amber); }
+.sin-hint { margin-left: 12px; font-size: 13px; color: var(--text-muted); font-weight: 400; }
+.sin-reason { margin-top: 4px; font-size: 12px; color: var(--red); max-width: 280px; }
+.sin-flow { display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+.sin-flow .field { width: 100%; }
+.sin-flow-text { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0; }
+.sin-alert {
+  width: 100%; padding: 12px 14px; border-radius: 8px;
+  background: var(--red-bg); color: var(--red); font-size: 13px; line-height: 1.5;
+}
+/* ── Agente de sinistro: Adicionar / Acompanhar ── */
+.sin-modes { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; }
+.sin-mode {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 10px 18px; border-radius: 10px;
+  background: var(--card, transparent); border: 1px solid var(--border);
+  color: var(--text-muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.sin-mode:hover { color: var(--text-primary); }
+.sin-mode.active { color: var(--primary); border-color: var(--primary); }
+.sin-mode.attn .sin-count { background: var(--amber-bg); color: var(--amber); }
+
+/* ── Acompanhar: filtro Segurado / Terceiro ── */
+.sin-pills { display: flex; gap: 8px; margin: -8px 0 16px; }
+.sin-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.sin-pill:hover { color: var(--text-primary); }
+.sin-pill.active { color: var(--primary); border-color: var(--primary); }
