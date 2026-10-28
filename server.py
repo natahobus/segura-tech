@@ -1153,6 +1153,45 @@ def api_apolices():
     return jsonify(rows)
 
 
+@app.get('/api/clientes/buscar')
+@roles_required('vendedor', 'sinistro', 'gestor')
+def api_clientes_buscar():
+    """Busca dados do cliente por CPF ou número da apólice (para preencher formulários de sinistro)."""
+    u = g.user
+    cpf_digits = only_digits(request.args.get('cpf', ''))
+    numero = str(request.args.get('apolice', '')).strip().lower()
+    if len(cpf_digits) != 11 and len(numero) < 3:
+        return jsonify(found=False, policies=[])
+
+    rows = filter_policies_for_user(u, db_all("SELECT * FROM policies ORDER BY id DESC"))
+    if numero:
+        matches = [p for p in rows if str(p.get('number') or '').strip().lower() == numero]
+    else:
+        matches = [p for p in rows if only_digits(p.get('cpf')) == cpf_digits]
+    if not matches:
+        return jsonify(found=False, policies=[])
+
+    matches.sort(key=lambda p: str(p.get('end') or ''), reverse=True)
+    main = matches[0]
+    main_cpf = only_digits(main.get('cpf'))
+
+    # Último veículo informado em sinistros anteriores desse cliente/apólice (respeitando a visibilidade)
+    veic = {'veiculoModelo': '', 'veiculoPlaca': ''}
+    sinistros = db_all("SELECT * FROM sinistros ORDER BY id DESC LIMIT 500")
+    if u['role'] == 'vendedor':
+        sinistros = [x for x in sinistros if str(x.get('seller') or '') == u['username']]
+    for sn in sinistros:
+        same = (sn.get('policyNumber') == main.get('number')) or (main_cpf and only_digits(sn.get('cpf')) == main_cpf)
+        if same and (sn.get('veiculoModelo') or sn.get('veiculoPlaca')):
+            veic = {'veiculoModelo': sn.get('veiculoModelo') or '', 'veiculoPlaca': sn.get('veiculoPlaca') or ''}
+            break
+
+    def pub(p):
+        return {k: p.get(k) for k in ('number', 'client', 'cpf', 'phone', 'insurer', 'type', 'status', 'start', 'end')}
+
+    return jsonify(found=True, policy=pub(main), policies=[pub(p) for p in matches], **veic)
+
+
 @app.get('/api/apolices/<int:pid>')
 @auth_required
 def api_apolice_details(pid):

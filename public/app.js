@@ -2818,3 +2818,82 @@ document.addEventListener('change', event => {
     delete endEl.dataset.manual;
   }
 });
+
+// ─────────────────────────────────────────────
+// Autopreenchimento: CPF ou nº da apólice puxam os dados do cliente
+// ─────────────────────────────────────────────
+const AUTOFILL_FORMS = [
+  { cpf: 'vClaimCpf', policy: 'vClaimPolicy', nome: 'vClaimNome', phone: 'vClaimPhone',
+    modelo: 'vClaimVeiculoModelo', placa: 'vClaimVeiculoPlaca' },
+  { cpf: 'claimSeguradoCpf', policy: 'claimPolicy', nome: 'claimSeguradoNome', insurer: 'claimInsurer',
+    modelo: 'claimSeguradoVeiculoModelo', placa: 'claimSeguradoVeiculoPlaca' }
+];
+const autofillTimers = {};
+
+function autofillHint(form, text, ok) {
+  const anchor = document.getElementById(form.cpf);
+  if (!anchor) return;
+  let hint = document.getElementById(`${form.cpf}Hint`);
+  if (!hint) {
+    hint = document.createElement('div');
+    hint.id = `${form.cpf}Hint`;
+    hint.style.cssText = 'font-size:12px;margin-top:4px;';
+    anchor.parentElement.appendChild(hint);
+  }
+  hint.textContent = text;
+  hint.style.color = ok ? 'var(--green, #16a34a)' : 'var(--text-muted)';
+}
+
+function autofillSetIfEmpty(id, value) {
+  const el = id && document.getElementById(id);
+  if (!el || !value || el.value.trim()) return;
+  if (el.tagName === 'SELECT') {
+    const wanted = String(value).toUpperCase();
+    const opt = [...el.options].find(o => {
+      const v = String(o.value || o.text).toUpperCase();
+      return v && (wanted.includes(v) || v.includes(wanted));
+    });
+    if (opt) el.value = opt.value;
+    return;
+  }
+  el.value = value;
+}
+
+async function autofillCliente(form, by) {
+  const cpfEl = document.getElementById(form.cpf);
+  const polEl = document.getElementById(form.policy);
+  const params = by === 'policy'
+    ? `apolice=${encodeURIComponent((polEl?.value || '').trim())}`
+    : `cpf=${encodeURIComponent(onlyDigits(cpfEl?.value))}`;
+  try {
+    const res = await apiFetch(`/clientes/buscar?${params}`);
+    if (!res || !res.found) {
+      autofillHint(form, 'Cliente não encontrado no cadastro. Preencha os dados manualmente.', false);
+      return;
+    }
+    const p = res.policy;
+    // CPF e apólice sempre refletem o cadastro; o resto só preenche se estiver vazio
+    if (cpfEl && p.cpf) cpfEl.value = formatCpf(p.cpf);
+    if (polEl && (by !== 'policy' || !polEl.value.trim())) polEl.value = p.number || '';
+    autofillSetIfEmpty(form.nome, p.client);
+    autofillSetIfEmpty(form.phone, p.phone ? formatPhone(p.phone) : '');
+    autofillSetIfEmpty(form.insurer, p.insurer);
+    autofillSetIfEmpty(form.modelo, res.veiculoModelo);
+    autofillSetIfEmpty(form.placa, res.veiculoPlaca);
+    const extra = res.policies.length > 1 ? ` (${res.policies.length} apólices; usando ${p.number}, a mais recente)` : '';
+    autofillHint(form, `Cliente encontrado: ${p.client}. Dados preenchidos${extra}.`, true);
+  } catch (error) {
+    if (!isAccessDeniedError(error)) console.warn('Autopreenchimento falhou:', error);
+  }
+}
+
+document.addEventListener('input', event => {
+  const el = event.target;
+  const form = AUTOFILL_FORMS.find(f => f.cpf === el.id || f.policy === el.id);
+  if (!form) return;
+  const by = el.id === form.policy ? 'policy' : 'cpf';
+  const ready = by === 'cpf' ? onlyDigits(el.value).length === 11 : el.value.trim().length >= 5;
+  clearTimeout(autofillTimers[el.id]);
+  if (!ready) return;
+  autofillTimers[el.id] = setTimeout(() => autofillCliente(form, by), 450);
+});
